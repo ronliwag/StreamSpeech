@@ -25,8 +25,12 @@ Code for ACL 2024 paper "[StreamSpeech: Simultaneous Speech-to-Speech Translatio
 3. StreamSpeech can present intermediate results (i.e., ASR or translation results) during simultaneous translation, offering a more comprehensive low-latency communication experience.
 
 ## 🔥News
-- [06.17] Add [Web GUI demo](./demo), now you can experience StreamSpeech in your local browser.
-- [06.05] [Paper](https://arxiv.org/pdf/2406.03049), [code](https://github.com/ictnlp/StreamSpeech), [models](https://huggingface.co/ICTNLP/StreamSpeech_Models/tree/main) and [demo](https://ictnlp.github.io/StreamSpeech-site/) of StreamSpeech are available!
+- [2025.06.17] We are excited to extend the "All-in-One" feature of StreamSpeech to more general multimodal interactions via developing **Stream-Omni**. 👉Refer to [paper](https://arxiv.org/abs/2506.13642), [code & demo](https://github.com/ictnlp/Stream-Omni) for more details.
+  - Stream-Omni is an end-to-end language-vision-speech chatbot that simultaneously supports interactions across any combination of text, vision, and speech modalities.
+  - Stream-Omni can simultaneously produce intermediate textual results (e.g., ASR transcriptions and model responses) during speech interactions, like the advanced voice service of GPT-4o.
+
+- [2024.06.17] Add [Web GUI demo](./demo), now you can experience StreamSpeech in your local browser.
+- [2024.06.05] [Paper](https://arxiv.org/pdf/2406.03049), [code](https://github.com/ictnlp/StreamSpeech), [models](https://huggingface.co/ICTNLP/StreamSpeech_Models/tree/main) and [demo](https://ictnlp.github.io/StreamSpeech-site/) of StreamSpeech are available!
 
 ## ⭐Features
 
