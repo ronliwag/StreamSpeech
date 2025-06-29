@@ -3,7 +3,7 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2406.03049-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2406.03049)
 [![project](https://img.shields.io/badge/%F0%9F%8E%A7%20Demo-Listen%20to%20StreamSpeech-orange.svg)](https://ictnlp.github.io/StreamSpeech-site/)
 [![model](https://img.shields.io/badge/%F0%9F%A4%97%20-StreamSpeech_Models-blue.svg)](https://huggingface.co/ICTNLP/StreamSpeech_Models/tree/main)
-[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Fictnlp%2FStreamSpeech&count_bg=%2379C83D&title_bg=%23555555&icon=awesomelists.svg&icon_color=%23E7E7E7&title=Visitors&edge_flat=false)](https://hits.seeyoufarm.com)
+[![Hits](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fictnlp%2FStreamSpeech&label=Vistors&icon=graph-up&color=%23dc3545)](https://hits.seeyoufarm.com)
 
 [![twitter](https://img.shields.io/badge/Twitter-@Gorden%20Sun-black?logo=X&logoColor=black)](https://x.com/Gorden_Sun/status/1798742796524007845) [![twitter](https://img.shields.io/badge/Twitter-@imxiaohu-black?logo=X&logoColor=black)](https://x.com/imxiaohu/status/1798999363987124355)
 
@@ -25,8 +25,8 @@ Code for ACL 2024 paper "[StreamSpeech: Simultaneous Speech-to-Speech Translatio
 3. StreamSpeech can present intermediate results (i.e., ASR or translation results) during simultaneous translation, offering a more comprehensive low-latency communication experience.
 
 ## 🔥News
-- [2025.06.17] We are excited to extend the "All-in-One" feature of StreamSpeech to more general multimodal interactions via developing **Stream-Omni**. 👉Refer to [paper](https://arxiv.org/abs/2506.13642), [code & demo](https://github.com/ictnlp/Stream-Omni) for more details.
-  - Stream-Omni is an end-to-end language-vision-speech chatbot that simultaneously supports interactions across any combination of text, vision, and speech modalities.
+- [2025.06.17] We are excited to extend the "All-in-One" feature of StreamSpeech to more general multimodal interactions via developing **Stream-Omni**. 👉Refer to [paper](https://arxiv.org/abs/2506.13642), [code & demo](https://github.com/ictnlp/Stream-Omni), [model](https://huggingface.co/ICTNLP/stream-omni-8b) for more details.
+  - Stream-Omni is an GPT-4o-like language-vision-speech chatbot that simultaneously supports interactions across any combination of text, vision, and speech modalities.
   - Stream-Omni can simultaneously produce intermediate textual results (e.g., ASR transcriptions and model responses) during speech interactions, like the advanced voice service of GPT-4o.
 
 - [2024.06.17] Add [Web GUI demo](./demo), now you can experience StreamSpeech in your local browser.
