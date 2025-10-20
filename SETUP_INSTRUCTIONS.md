@@ -77,7 +77,27 @@ python -c "import flask; print('Flask: OK')"
 
 ### 1. Download Pre-trained Models
 
-Create a `pretrain_models` directory and download the required models:
+**🚀 Fast Download Option (Recommended):**
+
+Download all pre-trained models from Google Drive for faster speeds:
+
+**[📁 Download Pre-trained Models from Google Drive](https://drive.google.com/drive/folders/1C4Y0sq_-tSRSbbu8dt0QGRQsk4h-9v5m?usp=drive_link)**
+
+1. Click the link above to access the Google Drive folder
+2. Download the entire `pretrain_models` folder
+3. Extract it to your StreamSpeech root directory
+
+The folder contains:
+- **StreamSpeech Models**: All language pairs (French-English, Spanish-English, German-English)
+  - `streamspeech.simultaneous.[lang]-en.pt` (simultaneous translation)
+  - `streamspeech.offline.[lang]-en.pt` (offline translation)
+- **HiFi-GAN Vocoder**: Complete unit-based vocoder with config
+  - `unit-based_HiFi-GAN_vocoder/mHuBERT.layer11.km1000.en/g_00500000`
+  - `unit-based_HiFi-GAN_vocoder/mHuBERT.layer11.km1000.en/config.json`
+
+**Alternative Download (Original Sources):**
+
+If you prefer to download from original sources:
 
 ```powershell
 mkdir pretrain_models
