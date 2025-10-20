@@ -262,7 +262,7 @@
                         normalize: true // Add normalize to output waveform
                     });
 
-                    outputWaveSurfer.load(`/uploads/output/${filename}`);
+                    outputWaveSurfer.load(`/output/${filename}`);
 
                     playButton.disabled = false;
                     playButton.style.backgroundColor = '#4CAF50'; // Change color to green
@@ -301,11 +301,16 @@
                     inputWaveSurfer.on('finish', function() {
                         updateASRResult(inputWaveSurfer.getCurrentTime());
                         updateTranslationResult(inputWaveSurfer.getCurrentTime());
+                        
+                        // Continue playing output audio even after input finishes
+                        if (outputWaveSurfer && !outputWaveSurfer.isPlaying()) {
+                            outputWaveSurfer.play();
+                        }
                     });
                 });
 
                 // Pass the latency parameter to the server
-                inputWaveSurfer.load(`/uploads/${filename}?latency=${latency}`);
+                inputWaveSurfer.load(`/process/${filename}?latency=${latency}`);
             })
             .catch(error => console.error('Error:', error));
         });
@@ -330,7 +335,14 @@
                 inputWaveSurfer.playPause();
             }
             if (outputWaveSurfer) {
-                outputWaveSurfer.playPause();
+                // If input is finished but output is still playing, just control output
+                if (inputWaveSurfer && inputWaveSurfer.isFinished() && outputWaveSurfer.isPlaying()) {
+                    outputWaveSurfer.pause();
+                } else if (inputWaveSurfer && inputWaveSurfer.isFinished() && !outputWaveSurfer.isPlaying()) {
+                    outputWaveSurfer.play();
+                } else {
+                    outputWaveSurfer.playPause();
+                }
             }
         }
 

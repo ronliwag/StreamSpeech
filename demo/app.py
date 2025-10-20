@@ -4,6 +4,11 @@
 #
 # StreamSpeech: Simultaneous Speech-to-Speech Translation with Multi-task Learning (ACL 2024)
 ##########################################
+import sys
+import os
+# Add fairseq to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fairseq'))
+
 from flask import Flask, request, jsonify, render_template, send_from_directory,url_for
 import os
 import json
@@ -23,7 +28,10 @@ from fairseq.models.text_to_speech.hub_interface import TTSHubInterface
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from fairseq.data.audio.audio_utils import convert_waveform
-from examples.speech_to_text.data_utils import extract_fbank_features
+# Import data_utils directly from the file path
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fairseq', 'examples', 'speech_to_text'))
+from data_utils import extract_fbank_features
 import ast
 import math
 import os
@@ -97,9 +105,18 @@ class OnlineFeatureExtractor:
             + self.len_ms_to_samples(self.window_size - self.shift_size)
         )
         samples = samples[:effective_num_samples]
-        waveform, sample_rate = convert_waveform(
-            torch.tensor([samples]), sr, to_mono=True, to_sample_rate=16000
-        )
+        # Simple audio conversion without sox dependency
+        waveform = torch.tensor([samples])
+        if sr != 16000:
+            # Simple resampling using torch.nn.functional.interpolate
+            # waveform is 2D: [1, samples_length]
+            target_length = int(len(samples) * 16000 / sr)
+            # For linear interpolation, we need 3D input: [batch, channels, length]
+            waveform = waveform.unsqueeze(0)  # Now [1, 1, samples_length]
+            waveform = torch.nn.functional.interpolate(
+                waveform, size=target_length, mode='linear', align_corners=False
+            ).squeeze(0)  # Back to [1, target_length]
+        sample_rate = 16000
         output = extract_fbank_features(waveform, 16000)
         output = self.transform(output)
         return torch.tensor(output, device=self.device)
@@ -824,7 +841,24 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
     
 def run(source):
     # if len(S2ST)!=0: return
-    samples, _ = soundfile.read(source, dtype="float32")
+    samples, sr = soundfile.read(source, dtype="float32")
+    
+    # Resample to expected sample rate if needed
+    if sr != ORG_SAMPLE_RATE:
+        print(f"Resampling from {sr}Hz to {ORG_SAMPLE_RATE}Hz")
+        # Simple resampling using torch
+        samples_tensor = torch.tensor(samples).unsqueeze(0).unsqueeze(0)  # [1, 1, length]
+        target_length = int(len(samples) * ORG_SAMPLE_RATE / sr)
+        samples_tensor = torch.nn.functional.interpolate(
+            samples_tensor, size=target_length, mode='linear', align_corners=False
+        )
+        samples = samples_tensor.squeeze().numpy()
+    
+    # Normalize input audio to prevent loud playback
+    max_val = np.max(np.abs(samples))
+    if max_val > 0:
+        samples = samples / max_val * 0.8  # Normalize and scale to 80%
+    
     agent.reset()
 
     interval=int(agent.segment_size*(ORG_SAMPLE_RATE/1000))
@@ -856,31 +890,108 @@ def find_largest_key_value(dictionary, N):
     return dictionary[largest_key]
 
 def merge_audio(left_audio_path, right_audio_path, offset_ms):
-    # 读取左右声道音频文件
-    left_audio = AudioSegment.from_file(left_audio_path)
-    right_audio = AudioSegment.from_file(right_audio_path)
-
-    right_audio=AudioSegment.silent(duration=offset_ms)+right_audio
-
+    # Use soundfile instead of pydub to avoid ffmpeg dependency
+    left_data, left_sr = soundfile.read(left_audio_path, dtype='float32')
+    right_data, right_sr = soundfile.read(right_audio_path, dtype='float32')
     
-    # 确保两个音频文件具有相同的长度
-    if len(left_audio) > len(right_audio):
-        right_audio += AudioSegment.silent(duration=len(left_audio) - len(right_audio))
-    elif len(left_audio) < len(right_audio):
-        left_audio += AudioSegment.silent(duration=len(right_audio) - len(left_audio))
-
-    # # 将左右声道音频合并
-    # merged_audio = left_audio.overlay(right_audio.pan(1))
-    # # 保存合并后的音频文件
-    # merged_audio.export(output_file, format="wav")
+    # Convert offset from ms to samples
+    offset_samples = int(offset_ms * right_sr / 1000)
     
-    return left_audio,right_audio
+    # Add silence at the beginning of right audio
+    right_data = np.concatenate([np.zeros(offset_samples), right_data])
+    
+    # Ensure both audio files have the same length
+    max_length = max(len(left_data), len(right_data))
+    
+    if len(left_data) < max_length:
+        left_data = np.concatenate([left_data, np.zeros(max_length - len(left_data))])
+    if len(right_data) < max_length:
+        right_data = np.concatenate([right_data, np.zeros(max_length - len(right_data))])
+    
+    # Normalize audio data before creating AudioSegment objects
+    left_max = np.max(np.abs(left_data))
+    if left_max > 0:
+        left_data = left_data / left_max * 0.8
+    
+    right_max = np.max(np.abs(right_data))
+    if right_max > 0:
+        right_data = right_data / right_max * 0.8
+    
+    # Convert to int16 for AudioSegment (standard format)
+    left_data_int16 = (left_data * 32767).astype(np.int16)
+    right_data_int16 = (right_data * 32767).astype(np.int16)
+    
+    # Create AudioSegment objects for compatibility with the rest of the code
+    left_audio = AudioSegment(
+        left_data_int16.tobytes(),
+        frame_rate=left_sr,
+        sample_width=2,  # int16 = 2 bytes
+        channels=1
+    )
+    right_audio = AudioSegment(
+        right_data_int16.tobytes(),
+        frame_rate=right_sr,
+        sample_width=2,  # int16 = 2 bytes
+        channels=1
+    )
+    
+    # Audio normalization is now handled at the source when writing the file
+    
+    return left_audio, right_audio
 
+# Flask routes will be defined after app initialization
+
+# Load main configuration
+with open('config.json', 'r') as f:
+    main_config = json.load(f)
+
+# Load paths configuration
+with open('paths_config.json', 'r') as f:
+    paths_config = json.load(f)
+
+# Merge configurations
+args_dict = main_config.copy()
+if main_config.get('use_paths_config', False):
+    # Add paths from paths_config.json
+    args_dict.update({
+        'data-bin': paths_config['configs']['data_bin'],
+        'user-dir': paths_config['configs']['user_dir'],
+        'agent-dir': paths_config['configs']['agent_dir'],
+        'model-path': paths_config['models']['simultaneous'],
+        'vocoder': paths_config['vocoder']['checkpoint'],
+        'vocoder-cfg': paths_config['vocoder']['config']
+    })
+
+# Initialize Flask app with config
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
+# Set upload folder from paths config
+upload_folder = paths_config.get('demo', {}).get('upload_folder', 'uploads')
+app.config['UPLOAD_FOLDER'] = upload_folder
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# Initialize agent
+parser = argparse.ArgumentParser()
+StreamSpeechS2STAgent.add_args(parser)
 
+# Create the list of arguments from args_dict
+args_list = []
+# pdb.set_trace()
+for key, value in args_dict.items():
+    # Skip non-argument fields
+    if key.startswith('_') or key in ['use_paths_config', 'language_pair']:
+        continue
+    if isinstance(value, bool):
+        if value:
+            args_list.append(f'--{key}')
+    else:
+        args_list.append(f'--{key}')
+        args_list.append(str(value))
+
+args = parser.parse_args(args_list)
+
+agent = StreamSpeechS2STAgent(args)
+
+# Define Flask routes
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -897,71 +1008,87 @@ def upload():
         file.save(filepath)
         return filepath
 
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
+@app.route('/process/<path:filepath>')
+def uploaded_file(filepath):
     latency = request.args.get('latency', default=320, type=int)
     agent.set_chunk_size(latency)
 
-    path=app.config['UPLOAD_FOLDER']+'/'+filename
+    # Handle both full path and just filename
+    if filepath.startswith(app.config['UPLOAD_FOLDER']):
+        path = filepath
+    else:
+        path = os.path.join(app.config['UPLOAD_FOLDER'], filepath)
     # pdb.set_trace()
     # if len(S2ST)==0:
     reset()
     run(path)
-    soundfile.write('/'.join(path.split('/')[:-1])+'/output.'+path.split('/')[-1],S2ST,SAMPLE_RATE)
-    left,right=merge_audio(path, '/'.join(path.split('/')[:-1])+'/output.'+path.split('/')[-1], OFFSET_MS)
-    left.export('/'.join(path.split('/')[:-1])+'/input.'+path.split('/')[-1], format="wav")
-    right.export('/'.join(path.split('/')[:-1])+'/output.'+path.split('/')[-1], format="wav")
+    filename = os.path.basename(path)
+    output_path = os.path.join(os.path.dirname(path), 'output.'+filename)
+    
+    # Normalize the audio data to prevent it from being too loud
+    if len(S2ST) > 0:
+        # Convert to numpy array and normalize
+        audio_data = np.array(S2ST, dtype=np.float32)
+        # Normalize to [-1, 1] range
+        max_val = np.max(np.abs(audio_data))
+        if max_val > 0:
+            audio_data = audio_data / max_val * 0.8  # Scale to 80% of max to be safe
+        soundfile.write(output_path, audio_data, SAMPLE_RATE)
+    else:
+        # Create silent audio if no data
+        soundfile.write(output_path, np.zeros(1000), SAMPLE_RATE)
+    left,right=merge_audio(path, output_path, OFFSET_MS)
+    input_path = os.path.join(os.path.dirname(path), 'input.'+filename)
+    left.export(input_path, format="wav")
+    right.export(output_path, format="wav")
     # left=left.split_to_mono()[0]
     # right=right.split_to_mono()[1]
     # pdb.set_trace()
     return send_from_directory(app.config['UPLOAD_FOLDER'], 'input.'+filename)
 
-@app.route('/uploads/output/<filename>')
-def uploaded_output_file(filename):
+@app.route('/output/<path:filepath>')
+def uploaded_output_file(filepath):
+    # Handle both full path and just filename
+    if filepath.startswith(app.config['UPLOAD_FOLDER']):
+        filename = os.path.basename(filepath)
+    else:
+        filename = filepath
     
     return send_from_directory(app.config['UPLOAD_FOLDER'], 'output.'+filename)
 
 
-@app.route('/asr/<float:current_time>', methods=['GET'])
+@app.route('/asr/<current_time>', methods=['GET'])
 def asr(current_time):
+    try:
+        current_time = float(current_time)
+    except ValueError:
+        return jsonify(result="")
+    
     # asr_result = f"ABCD... {int(current_time * 1000)}"
     N = current_time*ORG_SAMPLE_RATE
 
     asr_result=find_largest_key_value(ASR, N)
     return jsonify(result=asr_result)
 
-@app.route('/translation/<float:current_time>', methods=['GET'])
+@app.route('/translation/<current_time>', methods=['GET'])
 def translation(current_time):
+    try:
+        current_time = float(current_time)
+    except ValueError:
+        return jsonify(result="")
+    
     N = current_time*ORG_SAMPLE_RATE
 
     translation_result=find_largest_key_value(S2TT, N)
     # translation_result = f"1234... {int(current_time * 1000)}"
     return jsonify(result=translation_result)
 
-with open('/data/zhangshaolei/StreamSpeech/demo/config.json', 'r') as f:
-    args_dict = json.load(f)
-
-# Initialize agent
-parser = argparse.ArgumentParser()
-StreamSpeechS2STAgent.add_args(parser)
-
-# Create the list of arguments from args_dict
-args_list = []
-# pdb.set_trace()
-for key, value in args_dict.items():
-    if isinstance(value, bool):
-        if value:
-            args_list.append(f'--{key}')
-    else:
-        args_list.append(f'--{key}')
-        args_list.append(str(value))
-
-args = parser.parse_args(args_list)
-
-agent = StreamSpeechS2STAgent(args)
-
-
-
+@app.route('/favicon.ico')
+def favicon():
+    # Return a simple 204 No Content response to stop the 404 error
+    return '', 204
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=7860, debug=True)
+    host = paths_config.get('demo', {}).get('host', '0.0.0.0')
+    port = paths_config.get('demo', {}).get('port', 7860)
+    app.run(host=host, port=port, debug=True)
