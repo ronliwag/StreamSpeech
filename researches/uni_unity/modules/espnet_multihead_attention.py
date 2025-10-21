@@ -79,6 +79,20 @@ class ESPNETMultiHeadedAttention(nn.Module):
         else:
             self.attn = torch.softmax(scores, dim=-1)  # (batch, head, time1, time2)
         p_attn = self.dropout(self.attn)
+        
+        # Debug: Check dimensions before matmul
+        if p_attn.shape[-1] != value.shape[-2]:
+            print(f"Dimension mismatch in attention: p_attn.shape={p_attn.shape}, value.shape={value.shape}")
+            print(f"Expected p_attn last dim to match value second-to-last dim")
+            # Try to fix by adjusting dimensions
+            if p_attn.shape[-1] < value.shape[-2]:
+                # Pad p_attn to match value
+                pad_size = value.shape[-2] - p_attn.shape[-1]
+                p_attn = torch.nn.functional.pad(p_attn, (0, pad_size), value=0.0)
+            elif p_attn.shape[-1] > value.shape[-2]:
+                # Truncate p_attn to match value
+                p_attn = p_attn[..., :value.shape[-2]]
+        
         x = torch.matmul(p_attn, value)  # (batch, head, time1, d_k)
         x = (
             x.transpose(1, 2).contiguous().view(n_batch, -1, self.h * self.d_k)
