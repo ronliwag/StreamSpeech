@@ -1,0 +1,10 @@
+{
+  "model_path": "pretrain_models/streamspeech.simultaneous.es-en.pt",
+  "data_bin": "configs/es-en",
+  "config_yaml": "config.yaml",
+  "vocoder_path": "pretrain_models/unit-based_HiFi-GAN_vocoder/mHuBERT.layer11.km1000.en/g_00500000",
+  "vocoder_config": "pretrain_models/unit-based_HiFi-GAN_vocoder/mHuBERT.layer11.km1000.en/config_cvss_t.json",
+  "test_audio": "example/wavs/common_voice_fr_17301936.mp3",
+  "output_dir": "test_results",
+  "device": "cuda"
+}
