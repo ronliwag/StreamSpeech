@@ -25,6 +25,76 @@ import os
 logger = logging.getLogger(__name__)
 
 
+def _batch_by_size_slow(indices, num_tokens_fn, max_tokens=None, max_sentences=None, 
+                       required_batch_size_multiple=1, fixed_shapes=None):
+    """Slow fallback implementation for batch_by_size when Cython is not available."""
+    if fixed_shapes is not None:
+        return _batch_fixed_shapes_slow(indices, num_tokens_fn, fixed_shapes)
+    
+    max_tokens = int(max_tokens) if max_tokens is not None else -1
+    max_sentences = max_sentences if max_sentences is not None else -1
+    bsz_mult = required_batch_size_multiple
+    
+    if not isinstance(indices, np.ndarray):
+        indices = np.fromiter(indices, dtype=np.int64, count=-1)
+    
+    batches = []
+    batch = []
+    max_len = 0
+    
+    for idx in indices:
+        num_tokens = num_tokens_fn(idx)
+        max_len = max(max_len, num_tokens)
+        
+        # Check if adding this sample would exceed limits
+        if (max_tokens > 0 and len(batch) * max_len > max_tokens) or \
+           (max_sentences > 0 and len(batch) >= max_sentences):
+            if len(batch) > 0:
+                batches.append(batch)
+                batch = []
+                max_len = num_tokens
+        
+        batch.append(idx)
+        
+        # Check if batch is ready (multiple of required_batch_size_multiple)
+        if len(batch) % bsz_mult == 0 and len(batch) > 0:
+            if (max_tokens <= 0 or len(batch) * max_len <= max_tokens) and \
+               (max_sentences <= 0 or len(batch) <= max_sentences):
+                batches.append(batch)
+                batch = []
+                max_len = 0
+    
+    if len(batch) > 0:
+        batches.append(batch)
+    
+    return batches
+
+
+def _batch_fixed_shapes_slow(indices, num_tokens_fn, fixed_shapes):
+    """Slow fallback implementation for batch_fixed_shapes when Cython is not available."""
+    batches = []
+    shape_batches = {shape: [] for shape in fixed_shapes}
+    
+    for idx in indices:
+        num_tokens = num_tokens_fn(idx)
+        # Find the best matching shape
+        best_shape = None
+        for shape in fixed_shapes:
+            if num_tokens <= shape[1]:  # num_tokens <= max_tokens for this shape
+                best_shape = shape
+                break
+        
+        if best_shape is not None:
+            shape_batches[best_shape].append(idx)
+    
+    # Convert to list format
+    for shape, batch_indices in shape_batches.items():
+        if len(batch_indices) > 0:
+            batches.append(batch_indices)
+    
+    return batches
+
+
 def infer_language_pair(path):
     """Infer language pair from filename: <split>.<lang1>-<lang2>.(...).idx"""
     src, dst = None, None
@@ -316,10 +386,20 @@ def batch_by_size(
             batch_fixed_shapes_fast,
         )
     except ImportError:
-        raise ImportError(
-            "Please build Cython components with: "
-            "`python setup.py build_ext --inplace`"
-        )
+        # Fallback to slower implementation when Cython components are not available
+        logger.warning("Cython components not available, using slower implementation")
+        def batch_by_size_fn(indices, num_tokens_fn, max_tokens=None, max_sentences=None, 
+                            required_batch_size_multiple=1, fixed_shapes=None):
+            return _batch_by_size_slow(indices, num_tokens_fn, max_tokens, max_sentences, 
+                                      required_batch_size_multiple, fixed_shapes)
+        
+        def batch_by_size_vec(indices, num_tokens_vec, max_tokens=None, max_sentences=None, 
+                             required_batch_size_multiple=1, fixed_shapes=None):
+            return _batch_by_size_slow(indices, lambda i: num_tokens_vec[i], max_tokens, max_sentences, 
+                                      required_batch_size_multiple, fixed_shapes)
+        
+        def batch_fixed_shapes_fast(indices, num_tokens_fn, fixed_shapes):
+            return _batch_fixed_shapes_slow(indices, num_tokens_fn, fixed_shapes)
     except ValueError:
         raise ValueError(
             "Please build (or rebuild) Cython components with `python setup.py build_ext --inplace`."
