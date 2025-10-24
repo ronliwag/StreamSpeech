@@ -42,3 +42,4 @@ python fairseq/train.py $DATA `
   --restore-file "C:\Original Streamspeech - Copy\pretrain_models\streamspeech.offline.es-en.pt" `
   --reset-optimizer --reset-dataloader --reset-meters
 
+
