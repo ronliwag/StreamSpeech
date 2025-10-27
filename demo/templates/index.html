@@ -3,152 +3,383 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamSpeech</title>
+    <title>Enhanced StreamSpeech - PUP Thesis 2025</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/wavesurfer.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: 'Arial', sans-serif;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f4f4f9;
-            color: #333;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #dee2e6 100%);
+            min-height: 100vh;
+            color: #2d3748;
+            padding: 40px 20px;
         }
+
         .container {
-            max-width: 1400px; /* Increased the width */
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            padding: 0;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+            overflow: hidden;
+            border: 1px solid rgba(0, 0, 0, 0.05);
         }
+
+        .title-container {
+            position: relative;
+            background: linear-gradient(135deg, #800000 0%, #a50000 100%);
+            padding: 50px 40px 40px;
+            margin-bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .tag-sticker {
+            position: absolute;
+            font-size: 14px;
+            font-weight: 700;
+            top: 20px;
+            left: 20px;
+            transform: rotate(-5deg);
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            letter-spacing: 0.5px;
+        }
+
         h1 {
             text-align: center;
-            color: #000000;
+            color: #ffffff;
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1.4;
+            margin: 0;
+            padding: 0 60px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
+
         p {
             text-align: center;
+            padding: 25px 40px 15px;
+            margin: 0;
+            font-size: 16px;
+            color: #4a5568;
+            background: linear-gradient(180deg, #f7fafc 0%, #ffffff 100%);
         }
+
+        p strong {
+            color: #800000;
+            font-weight: 600;
+        }
+
+        h4 {
+            font-size: 18px;
+            line-height: 1.6;
+            color: #2d3748;
+            margin: 0;
+            padding: 15px 40px 25px;
+            text-align: center;
+            background: #ffffff;
+            font-weight: 400;
+        }
+
+        h4 strong {
+            color: #800000;
+            font-weight: 600;
+        }
+
         .badges {
             text-align: center;
-            margin: 15px 0; /* Reduced the margin */
+            padding: 20px 40px 30px;
+            margin: 0;
+            background: #ffffff;
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
         }
+
+        .badges img {
+            height: 24px;
+            transition: transform 0.2s ease;
+        }
+
+        .badges img:hover {
+            transform: translateY(-2px);
+        }
+
         form {
             display: flex;
             justify-content: center;
-            margin-bottom: 10px; /* Reduced the margin */
-        }
-        input[type="file"] {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 5px; /* Reduced the padding */
-            cursor: pointer;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            padding: 5px 10px; /* Reduced the padding */
-            cursor: pointer;
-            margin-left: 10px;
-        }
-        button:disabled {
-            background-color: #ddd;
-            cursor: not-allowed;
-        }
-        button:hover:not([disabled]) {
-            background-color: #45a049;
-        }
-        #waveform, #outputWaveform {
-            margin: 10px 0; /* Reduced the margin */
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        .results {
-            margin-top: 10px; /* Reduced the margin */
-            padding: 10px;
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        h2, .result-title {
-            font-size: 16px;
-            color: #000000;
             align-items: center;
-            margin: 5px 0; /* Reduced the margin */
+            padding: 30px 40px;
+            margin: 0;
+            background: linear-gradient(180deg, #f7fafc 0%, #edf2f7 100%);
+            border-top: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            gap: 15px;
+            flex-wrap: wrap;
         }
-        .result-content {
-            font-size: 16px;
-            color: #001eff;
-            margin-left: 10px;
-            white-space: pre-wrap; /* Preserve empty lines */
-            min-height: 1em; /* Ensure at least one line of height */
-        }
-        .result-content2 {
-            font-size: 16px;
-            color: #ff8800;
-            margin-left: 10px;
-            white-space: pre-wrap; /* Preserve empty lines */
-            min-height: 1em; /* Ensure at least one line of height */
-        }
-        .streaming-inputs {
-            margin-top: 10px; /* Reduced the margin */
-            padding: 10px;
-            background: #ffffff;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        .wave-progress {
-            width: 10px; /* Adjust the height for the progress line width */
-        }
-        .tag-sticker {
-        position: absolute;
-        font-size: 16px;
-        top: 0px; /* Adjusted top position to be above the title */
-        left: 5px; /* Adjusted left position to align with the title */
-        transform: rotate(-15deg);
-        background-color: #ff5722;
-        color: white;
-        padding: 5px 5px;
-        font-weight: bold;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-        }
-        .title-container {
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 0; /* Reduce the margin-bottom to minimize space */
-        }
-        h1 {
-            margin-bottom: -5px; /* Reduced the margin-bottom of the title */
-            color: #000000;
-        }
-        h4{
-            font-size: 18px;
-            color: #000000;
-            margin: 3px 0; /* Reduced the margin */
-        }
+
         .slider-container {
             display: flex;
             align-items: center;
-            margin-right: 10px;
-            position: relative;
+            gap: 12px;
+            background: #ffffff;
+            padding: 12px 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
+
         .slider-container label {
-            margin-right: 10px;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 14px;
+            white-space: nowrap;
         }
+
         #latencySlider {
-            margin-right: 10px;
+            -webkit-appearance: none;
+            appearance: none;
+            width: 200px;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(to right, #800000 0%, #a50000 100%);
+            outline: none;
+            transition: opacity 0.2s;
         }
+
+        #latencySlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 3px solid #800000;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        #latencySlider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        #latencySlider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 3px solid #800000;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        #latencySlider::-moz-range-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+        }
+
         #latencyValueBox {
-            display: inline-block;
-            width: 50px;
-            text-align: center;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 3px;
-            background-color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 60px;
+            padding: 6px 12px;
+            font-weight: 600;
+            font-size: 14px;
+            color: #800000;
+            background: #f7fafc;
+            border: 2px solid #800000;
+            border-radius: 8px;
+        }
+
+        input[type="file"] {
+            padding: 10px 16px;
+            border: 2px solid #cbd5e0;
+            border-radius: 10px;
+            background: #ffffff;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s ease;
+            color: #4a5568;
+        }
+
+        input[type="file"]:hover {
+            border-color: #800000;
+            box-shadow: 0 2px 8px rgba(128, 0, 0, 0.1);
+        }
+
+        button {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 10px;
+            padding: 11px 24px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+            font-family: 'Inter', sans-serif;
+        }
+
+        button:hover:not([disabled]) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+        }
+
+        button:active:not([disabled]) {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        #playButton {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            margin-top: 15px;
+            padding: 12px 28px;
+            font-size: 16px;
+        }
+
+        #playButton:hover:not([disabled]) {
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        #playButton:disabled {
+            background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%);
+        }
+
+        .streaming-inputs {
+            margin: 30px 40px;
+            padding: 25px;
+            background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 2px solid #bae6fd;
+            border-radius: 16px;
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
+        }
+
+        .results {
+            margin: 20px 40px;
+            padding: 25px;
+            background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+            border: 2px solid #e5e7eb;
+            border-radius: 16px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .results:hover {
+            border-color: #d1d5db;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        h2, .result-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            margin: 0 0 15px 0;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #e5e7eb;
+            letter-spacing: 0.3px;
+        }
+
+        .result-content {
+            font-size: 16px;
+            line-height: 1.7;
+            color: #1e40af;
+            padding: 15px;
+            background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+            border-left: 4px solid #3b82f6;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            min-height: 2em;
+            font-weight: 500;
+        }
+
+        .result-content2 {
+            font-size: 16px;
+            line-height: 1.7;
+            color: #c2410c;
+            padding: 15px;
+            background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%);
+            border-left: 4px solid #f97316;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            min-height: 2em;
+            font-weight: 500;
+        }
+
+        #waveform, #outputWaveform {
+            margin: 15px 0;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 15px;
+            background: #ffffff;
+            box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.05);
+            min-height: 100px;
+        }
+
+        .wave-progress {
+            width: 3px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 10px;
+            }
+
+            h1 {
+                font-size: 24px;
+                padding: 0 20px;
+            }
+
+            .tag-sticker {
+                font-size: 12px;
+                padding: 6px 12px;
+            }
+
+            form {
+                flex-direction: column;
+                padding: 20px;
+            }
+
+            .slider-container {
+                width: 100%;
+            }
+
+            #latencySlider {
+                width: 100%;
+            }
+
+            .streaming-inputs, .results {
+                margin: 15px 20px;
+                padding: 20px;
+            }
+
+            .badges {
+                padding: 15px 20px 25px;
+            }
         }
     </style>
     
@@ -156,16 +387,16 @@
 <body>
     <div class="container">
         <div class="title-container">
-            <div class="tag-sticker"> ACL 2024 </div>
-            <h1>StreamSpeech: Simultaneous Speech-to-Speech Translation with Multi-task Learning</h1>
+            <div class="tag-sticker"> PUP 2025 </div>
+            <h1>A Modified HiFi-GAN Vocoder Using ODConv and GRC for Expressive Voice Cloning in StreamSpeech's Simultaneous Translation</h1>
         </div>
-        <p><strong>Authors</strong>: Shaolei Zhang, Qingkai Fang, Shoutao Guo, Zhengrui Ma, Min Zhang, Yang Feng*</p>
-        <h4>💡<strong>StreamSpeech</strong> is an <font color="red">"All in One" seamless model</font> for offline and simultaneous speech recognition, speech translation and speech synthesis under any latency.</h4>
+        <p><strong>Authors</strong>: Cynthia Loraine C. Alberca, Leo D. Alcaraz Jr, Ron Corwin R. Liwag, Alfred Joshua I. Palpal-latoc, Francis Erick C. Romasanta</p>
+        <h4><strong>Enhanced StreamSpeech</strong> with <font color="red">speaker-aware voice cloning</font> using modified HiFi-GAN vocoder with Omni-Dimensional Dynamic Convolution (ODConv) and Grouped Residual Convolution (GRC) for expressive speech-to-speech translation.</h4>
         <div class="badges">
-            <a href="https://arxiv.org/abs/2406.03049"><img src="https://img.shields.io/badge/arXiv-2406.03049-b31b1b.svg?logo=arXiv" alt="arXiv"></a>
-            <a href="https://ictnlp.github.io/StreamSpeech-site/"><img src="https://img.shields.io/badge/%F0%9F%8E%A7%20Demo-Listen%20to%20StreamSpeech-orange.svg" alt="Demo"></a>
-            <a href="https://huggingface.co/ICTNLP/StreamSpeech_Models/tree/main"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20-StreamSpeech_Models-blue.svg" alt="StreamSpeech Models"></a>
-            <a href="https://github.com/ictnlp/StreamSpeech"><img src="https://img.shields.io/github/stars/ictnlp/StreamSpeech?style=social&label=GitHub+Repo" alt="Visitors"></a>
+            <img src="https://img.shields.io/badge/Institution-Polytechnic%20University%20of%20the%20Philippines-maroon.svg" alt="PUP">
+            <img src="https://img.shields.io/badge/Degree-Bachelor%20of%20Science%20in%20Computer%20Science-blue.svg" alt="BSCS">
+            <img src="https://img.shields.io/badge/Year-2025-green.svg" alt="2025">
+            <img src="https://img.shields.io/badge/Type-Undergraduate%20Thesis-orange.svg" alt="Thesis">
         </div>
         <form id="uploadForm">
             <div class="slider-container">

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamSpeech - Enhanced Voice Cloning</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #ffffff 0%, #fafbfc 50%, #f5f7fa 100%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        .page-label {
+            position: fixed;
+            top: 20px;
+            left: 30px;
+            color: #6b7280;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 100;
+            letter-spacing: 0.5px;
+        }
+
+        .landing-container {
+            position: relative;
+            width: 100%;
+            min-height: 100vh;
+            background: transparent;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            overflow: hidden;
+        }
+
+        .content-section {
+            padding: 100px 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            z-index: 2;
+            background: transparent;
+        }
+
+        .content-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            filter: blur(2px);
+        }
+
+        .dot-1 {
+            background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%);
+        }
+
+        .dot-2 {
+            background: linear-gradient(135deg, #60a5fa 0%, #93c5fd 100%);
+        }
+
+        .dot-3 {
+            background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+        }
+
+        .logo-text {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1f2937;
+            letter-spacing: -0.5px;
+        }
+
+        .main-title {
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1.3;
+            color: #1f2937;
+            text-transform: uppercase;
+            letter-spacing: -1px;
+            margin-bottom: 10px;
+        }
+
+        .description {
+            font-size: 19px;
+            line-height: 1.8;
+            color: #4a5568;
+            font-weight: 400;
+            max-width: 650px;
+        }
+
+        .cta-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #800000 0%, #a50000 100%);
+            color: #ffffff;
+            padding: 16px 32px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 24px rgba(128, 0, 0, 0.3);
+            align-self: flex-start;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(128, 0, 0, 0.4);
+        }
+
+        .cta-button:active {
+            transform: translateY(0);
+        }
+
+        .arrow-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .arrow-icon::after {
+            content: '→';
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .copyright {
+            color: #6b7280;
+            font-size: 14px;
+            font-weight: 400;
+            margin-top: auto;
+        }
+
+        .visual-section {
+            position: relative;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        .sphere-container {
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .sphere {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.4;
+        }
+
+        .sphere-1 {
+            width: 450px;
+            height: 450px;
+            background: radial-gradient(circle at 30% 30%, rgba(251, 113, 133, 0.9), rgba(236, 72, 153, 0.5));
+            top: 8%;
+            right: 15%;
+            animation: float 20s ease-in-out infinite;
+        }
+
+        .sphere-2 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle at 30% 30%, rgba(96, 165, 250, 0.9), rgba(59, 130, 246, 0.5));
+            top: 45%;
+            right: 8%;
+            animation: float 18s ease-in-out infinite 2s;
+        }
+
+        .sphere-3 {
+            width: 350px;
+            height: 350px;
+            background: radial-gradient(circle at 30% 30%, rgba(147, 197, 253, 0.8), rgba(96, 165, 250, 0.4));
+            top: 75%;
+            right: 25%;
+            animation: float 16s ease-in-out infinite 4s;
+        }
+
+        .sphere-4 {
+            width: 420px;
+            height: 420px;
+            background: radial-gradient(circle at 30% 30%, rgba(252, 211, 77, 0.8), rgba(251, 191, 36, 0.4));
+            top: 25%;
+            right: 35%;
+            animation: float 22s ease-in-out infinite 1s;
+        }
+
+        .sphere-5 {
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle at 30% 30%, rgba(244, 114, 182, 0.8), rgba(236, 72, 153, 0.4));
+            bottom: 12%;
+            right: 18%;
+            animation: float 19s ease-in-out infinite 3s;
+        }
+
+        .sphere-6 {
+            width: 380px;
+            height: 380px;
+            background: radial-gradient(circle at 30% 30%, rgba(129, 140, 248, 0.8), rgba(99, 102, 241, 0.4));
+            top: 2%;
+            right: 5%;
+            animation: float 17s ease-in-out infinite 5s;
+        }
+
+        .sphere-7 {
+            width: 320px;
+            height: 320px;
+            background: radial-gradient(circle at 30% 30%, rgba(96, 165, 250, 0.7), rgba(59, 130, 246, 0.4));
+            bottom: 28%;
+            right: 50%;
+            animation: float 21s ease-in-out infinite 2.5s;
+        }
+
+        .sphere-8 {
+            width: 340px;
+            height: 340px;
+            background: radial-gradient(circle at 30% 30%, rgba(251, 207, 232, 0.8), rgba(244, 114, 182, 0.4));
+            top: 58%;
+            right: 60%;
+            animation: float 23s ease-in-out infinite 4.5s;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translate(0, 0) scale(1);
+            }
+            25% {
+                transform: translate(20px, -20px) scale(1.05);
+            }
+            50% {
+                transform: translate(-15px, 15px) scale(0.95);
+            }
+            75% {
+                transform: translate(15px, 10px) scale(1.02);
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .content-section {
+                padding: 80px 60px;
+            }
+
+            .main-title {
+                font-size: 40px;
+            }
+        }
+
+        @media (max-width: 1024px) {
+            .landing-container {
+                grid-template-columns: 1fr;
+            }
+
+            .visual-section {
+                min-height: 50vh;
+                order: -1;
+            }
+
+            .content-section {
+                padding: 80px 50px;
+                min-height: 50vh;
+            }
+
+            .main-title {
+                font-size: 36px;
+            }
+
+            .description {
+                font-size: 17px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-label {
+                top: 15px;
+                left: 20px;
+                font-size: 12px;
+            }
+
+            .content-section {
+                padding: 60px 40px;
+            }
+
+            .content-wrapper {
+                gap: 30px;
+            }
+
+            .main-title {
+                font-size: 30px;
+            }
+
+            .description {
+                font-size: 16px;
+            }
+
+            .cta-button {
+                padding: 14px 28px;
+                font-size: 15px;
+            }
+
+            .visual-section {
+                min-height: 40vh;
+            }
+
+            .sphere {
+                filter: blur(40px);
+            }
+
+            .copyright {
+                margin-top: 30px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .content-section {
+                padding: 50px 30px;
+            }
+
+            .logo-text {
+                font-size: 20px;
+            }
+
+            .main-title {
+                font-size: 24px;
+            }
+
+            .description {
+                font-size: 15px;
+            }
+
+            .cta-button {
+                padding: 12px 24px;
+                font-size: 14px;
+            }
+
+            .visual-section {
+                min-height: 35vh;
+            }
+
+            .sphere {
+                filter: blur(30px);
+            }
+
+            .copyright {
+                margin-top: 20px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-label">Home Page</div>
+    
+    <div class="landing-container">
+        <div class="content-section">
+            <div class="content-wrapper">
+                <div class="logo">
+                    <div class="logo-dots">
+                        <div class="dot dot-1"></div>
+                        <div class="dot dot-2"></div>
+                        <div class="dot dot-3"></div>
+                    </div>
+                    <div class="logo-text">StreamSpeech</div>
+                </div>
+
+                <h1 class="main-title">
+                    A Modified HiFi-GAN Vocoder Using ODConv and GRC for Expressive Voice Cloning in StreamSpeech's Real-Time Translation
+                </h1>
+
+                <p class="description">
+                    A simultaneous translation that finally preserves your expressive voice and unique identity by leveraging an enhanced HiFi-GAN vocoder architecture for seamless voice cloning.
+                </p>
+
+                <a href="/demo" class="cta-button">
+                    <span>Try to test it out</span>
+                    <span class="arrow-icon"></span>
+                </a>
+            </div>
+
+            <div class="copyright">
+                Copyright 2025
+            </div>
+        </div>
+
+        <div class="visual-section">
+            <div class="sphere-container">
+                <div class="sphere sphere-1"></div>
+                <div class="sphere sphere-2"></div>
+                <div class="sphere sphere-3"></div>
+                <div class="sphere sphere-4"></div>
+                <div class="sphere sphere-5"></div>
+                <div class="sphere sphere-6"></div>
+                <div class="sphere sphere-7"></div>
+                <div class="sphere sphere-8"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
