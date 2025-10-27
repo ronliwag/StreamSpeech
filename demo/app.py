@@ -8,6 +8,8 @@ import sys
 import os
 # Add fairseq to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fairseq'))
+# Add modifications to Python path for embedding extractors
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'modifications'))
 
 from flask import Flask, request, jsonify, render_template, send_from_directory,url_for
 import os
@@ -39,7 +41,7 @@ import json
 import numpy as np
 from copy import deepcopy
 import torch
-import torchaudio.compliance.kaldi as kaldi
+import torchaudio
 import yaml
 from fairseq import checkpoint_utils, tasks, utils, options
 from fairseq.file_io import PathManager
@@ -47,6 +49,10 @@ from fairseq import search
 from fairseq.data.audio.feature_transforms import CompositeAudioFeatureTransform
 import soundfile
 import argparse
+
+# Import embedding extractors for FiLM conditioning
+from ecapa import ECAPA
+from emotion2vec import Emotion2Vec
 
 SHIFT_SIZE = 10
 WINDOW_SIZE = 25
@@ -57,6 +63,16 @@ BOW_PREFIX = "\u2581"
 DEFAULT_EOS = 2
 OFFSET_MS=-1
 Finished=False
+
+# Initialize embedding extractors for speaker and emotion
+print("Initializing embedding extractors...")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+ecapa_extractor = ECAPA(device=device)
+emotion_extractor = Emotion2Vec(device=device)
+print(f"Embedding extractors initialized on device: {device}")
+
+# Store embeddings per uploaded file
+session_embeddings = {}
 
 ASR={}
 
@@ -1006,55 +1022,97 @@ def upload():
     if file:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
-        return filepath
+        
+        # Extract speaker and emotion embeddings for FiLM conditioning
+        try:
+            print(f"Extracting embeddings from: {file.filename}")
+            speaker_embeddings = ecapa_extractor.extract_speaker_embeddings(filepath)
+            print(f"Speaker embeddings extracted: {speaker_embeddings.shape}")
+            
+            emotion_embeddings = emotion_extractor.extract_emotion_embeddings(filepath)
+            print(f"Emotion embeddings extracted: {emotion_embeddings.shape}")
+            
+            # Combine embeddings for FiLM conditioning
+            film_conditioning = torch.cat([speaker_embeddings, emotion_embeddings], dim=-1)
+            print(f"Combined FiLM conditioning: {film_conditioning.shape}")
+            
+            # Store embeddings for this file
+            session_embeddings[file.filename] = film_conditioning
+            print(f"FiLM conditioning stored for: {file.filename}")
+            
+        except Exception as e:
+            print(f"Warning: Failed to extract embeddings: {e}")
+            print("Continuing without FiLM conditioning...")
+        
+        return file.filename  # Return just the filename, not the full path
 
 @app.route('/process/<path:filepath>')
 def uploaded_file(filepath):
-    latency = request.args.get('latency', default=320, type=int)
-    agent.set_chunk_size(latency)
+    try:
+        latency = request.args.get('latency', default=320, type=int)
+        agent.set_chunk_size(latency)
 
-    # Handle both full path and just filename
-    if filepath.startswith(app.config['UPLOAD_FOLDER']):
-        path = filepath
-    else:
-        path = os.path.join(app.config['UPLOAD_FOLDER'], filepath)
-    # pdb.set_trace()
-    # if len(S2ST)==0:
-    reset()
-    run(path)
-    filename = os.path.basename(path)
-    output_path = os.path.join(os.path.dirname(path), 'output.'+filename)
-    
-    # Normalize the audio data to prevent it from being too loud
-    if len(S2ST) > 0:
-        # Convert to numpy array and normalize
-        audio_data = np.array(S2ST, dtype=np.float32)
-        # Normalize to [-1, 1] range
-        max_val = np.max(np.abs(audio_data))
-        if max_val > 0:
-            audio_data = audio_data / max_val * 0.8  # Scale to 80% of max to be safe
-        soundfile.write(output_path, audio_data, SAMPLE_RATE)
-    else:
-        # Create silent audio if no data
-        soundfile.write(output_path, np.zeros(1000), SAMPLE_RATE)
-    left,right=merge_audio(path, output_path, OFFSET_MS)
-    input_path = os.path.join(os.path.dirname(path), 'input.'+filename)
-    left.export(input_path, format="wav")
-    right.export(output_path, format="wav")
-    # left=left.split_to_mono()[0]
-    # right=right.split_to_mono()[1]
-    # pdb.set_trace()
-    return send_from_directory(app.config['UPLOAD_FOLDER'], 'input.'+filename)
+        # Handle both full path and just filename
+        if filepath.startswith(app.config['UPLOAD_FOLDER']):
+            path = filepath
+        else:
+            # Remove any leading "uploads/" from the filepath to avoid duplication
+            if filepath.startswith('uploads/'):
+                filepath = filepath[8:]  # Remove "uploads/" prefix
+            path = os.path.join(app.config['UPLOAD_FOLDER'], filepath)
+        
+        print(f"Processing audio file: {path}")
+        print(f"File exists: {os.path.exists(path)}")
+        
+        reset()
+        run(path)
+        filename = os.path.basename(path)
+        output_path = os.path.join(os.path.dirname(path), 'output.'+filename)
+        
+        # Normalize the audio data to prevent it from being too loud
+        if len(S2ST) > 0:
+            # Convert to numpy array and normalize
+            audio_data = np.array(S2ST, dtype=np.float32)
+            # Normalize to [-1, 1] range
+            max_val = np.max(np.abs(audio_data))
+            if max_val > 0:
+                audio_data = audio_data / max_val * 0.8  # Scale to 80% of max to be safe
+            soundfile.write(output_path, audio_data, SAMPLE_RATE)
+        else:
+            # Create silent audio if no data
+            soundfile.write(output_path, np.zeros(1000), SAMPLE_RATE)
+        
+        print("Audio processing completed, merging audio...")
+        left,right=merge_audio(path, output_path, OFFSET_MS)
+        input_path = os.path.join(os.path.dirname(path), 'input.'+filename)
+        left.export(input_path, format="wav")
+        right.export(output_path, format="wav")
+        print("Files exported successfully")
+        
+        return send_from_directory(app.config['UPLOAD_FOLDER'], 'input.'+filename)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error processing audio file: {e}")
+        print(f"Full traceback: {error_details}")
+        return f"Error processing audio: {str(e)}", 500
 
 @app.route('/output/<path:filepath>')
 def uploaded_output_file(filepath):
-    # Handle both full path and just filename
-    if filepath.startswith(app.config['UPLOAD_FOLDER']):
-        filename = os.path.basename(filepath)
-    else:
-        filename = filepath
-    
-    return send_from_directory(app.config['UPLOAD_FOLDER'], 'output.'+filename)
+    try:
+        # Handle both full path and just filename
+        if filepath.startswith(app.config['UPLOAD_FOLDER']):
+            filename = os.path.basename(filepath)
+        else:
+            # Remove any leading "uploads/" from the filepath to avoid duplication
+            if filepath.startswith('uploads/'):
+                filepath = filepath[8:]  # Remove "uploads/" prefix
+            filename = filepath
+        
+        return send_from_directory(app.config['UPLOAD_FOLDER'], 'output.'+filename)
+    except Exception as e:
+        print(f"Error serving output file: {e}")
+        return f"Error serving output file: {str(e)}", 404
 
 
 @app.route('/asr/<current_time>', methods=['GET'])
