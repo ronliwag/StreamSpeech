@@ -11,7 +11,8 @@ Fine-tuning adapts the pre-trained StreamSpeech model (trained on CVSS-C synthet
 - **Source**: CommonVoice v4 Spanish (es) and English (en)
 - **1st Batch**: Clips 1-10 (1,247 paired samples)
 - **2nd Batch**: Clips 11-20 (1,777 paired samples)
-- **Total**: 3,024 Spanish-English audio pairs
+- **3rd Batch**: Clips 1-10 (1,644 paired samples)
+- **Total**: 4,668 Spanish-English audio pairs
 
 ## Training Results
 
@@ -30,10 +31,19 @@ Fine-tuning adapts the pre-trained StreamSpeech model (trained on CVSS-C synthet
 - Training Time: ~26 minutes
 - Best Checkpoint: `checkpoint_best.pt`
 
+### 3rd Batch Training (Final Model - October 2025)
+- Samples: 4,668 (1,247 + 1,777 + 1,644)
+- Updates: 5,000 (continued from 1,600)
+- Epochs: 21
+- Final Training Loss: 24.564
+- Best Validation Loss: 27.353
+- Training Time: 1.5 hours
+- Best Checkpoint: `checkpoint_best.pt` (822 MB)
+
 ### Performance Improvement
-- Loss Improvement: 6.5% (37.281 → 34.862)
-- Best Loss Improvement: 11.5% (37.3 → 33.027)
-- Dataset Size: 2.4x increase (1,247 → 3,024 samples)
+- Loss Improvement: 6.5% (37.281 → 34.862) after 2nd batch
+- **Final Improvement: 26.6%** (37.281 → 27.353) after 3rd batch
+- Dataset Size: 3.7x increase (1,247 → 4,668 samples)
 
 ## Fine-tuned Models
 
@@ -43,9 +53,15 @@ Models are available on Google Drive (see links in main README):
    - Location: `checkpoints/streamspeech.finetuned.es-en/`
    - Best for: Initial CVSS-T adaptation
 
-2. **Extended Model** (3,024 samples) - RECOMMENDED
+2. **Extended Model** (3,024 samples)
    - Location: `checkpoints/streamspeech.finetuned.es-en.extended/`
+   - Best for: Extended training baseline
+
+3. **3rd Batch Model** (4,668 samples) - RECOMMENDED
+   - Location: Google Drive
+   - File: `streamspeech.3rd-batch.es-en.checkpoint_best.pt` (822 MB)
    - Best for: Production use and evaluation
+   - Best validation loss: 27.353
 
 ## Files
 
