@@ -270,6 +270,38 @@
             background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%);
         }
 
+        .individual-play-button {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+            margin-top: 15px;
+            padding: 10px 24px;
+            font-size: 14px;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .individual-play-button:hover:not([disabled]) {
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .individual-play-button:disabled {
+            background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
         .streaming-inputs {
             margin: 30px 40px;
             padding: 25px;
@@ -410,7 +442,10 @@
         <div class="streaming-inputs">
             <h2>Streaming Inputs</h2>
             <div id="waveform"></div>
-            <button id="playButton" disabled>▶Play/Pause</button>
+            <div class="button-group">
+                <button id="playButton" disabled>▶ Play Both (Synchronized)</button>
+                <button id="playSpanishButton" class="individual-play-button" disabled>▶ Play Spanish Only</button>
+            </div>
         </div>
         <br><br>
         <div class="results">
@@ -424,6 +459,7 @@
         <div class="results">
             <h2 class="result-title">Simultaneous Speech-to-Speech Translation</h2>
             <div id="outputWaveform"></div>
+            <button id="playEnglishButton" class="individual-play-button" disabled>▶ Play English Only</button>
         </div>
     </div>
 
@@ -431,6 +467,8 @@
         var inputWaveSurfer, outputWaveSurfer;
         var asrInterval, translationInterval;
         var playButton = document.getElementById('playButton');
+        var playSpanishButton = document.getElementById('playSpanishButton');
+        var playEnglishButton = document.getElementById('playEnglishButton');
 
         // Listen for changes in the file input
         document.getElementById('fileInput').addEventListener('change', function() {
@@ -496,11 +534,19 @@
                     outputWaveSurfer.load(`/output/${filename}`);
 
                     playButton.disabled = false;
-                    playButton.style.backgroundColor = '#4CAF50'; // Change color to green
+                    playButton.style.backgroundColor = '#4CAF50';
+                    playSpanishButton.disabled = false;
+                    playEnglishButton.disabled = false;
 
                     // Ensure old event listeners are removed before adding new ones
                     playButton.removeEventListener('click', playPauseHandler);
                     playButton.addEventListener('click', playPauseHandler);
+                    
+                    playSpanishButton.removeEventListener('click', playSpanishOnly);
+                    playSpanishButton.addEventListener('click', playSpanishOnly);
+                    
+                    playEnglishButton.removeEventListener('click', playEnglishOnly);
+                    playEnglishButton.addEventListener('click', playEnglishOnly);
 
                     inputWaveSurfer.on('play', function() {
                         outputWaveSurfer.play();
@@ -574,6 +620,47 @@
                 } else {
                     outputWaveSurfer.playPause();
                 }
+            }
+        }
+
+        function playSpanishOnly() {
+            if (inputWaveSurfer) {
+                // Stop output if it's playing
+                if (outputWaveSurfer && outputWaveSurfer.isPlaying()) {
+                    outputWaveSurfer.pause();
+                }
+                // Play or pause only the Spanish input
+                inputWaveSurfer.playPause();
+                
+                // Update ASR results while playing Spanish only
+                if (inputWaveSurfer.isPlaying()) {
+                    updateASRResult(inputWaveSurfer.getCurrentTime());
+                    updateTranslationResult(inputWaveSurfer.getCurrentTime());
+                    
+                    asrInterval = setInterval(function() {
+                        updateASRResult(inputWaveSurfer.getCurrentTime());
+                    }, 320);
+                    
+                    translationInterval = setInterval(function() {
+                        updateTranslationResult(inputWaveSurfer.getCurrentTime());
+                    }, 320);
+                } else {
+                    clearInterval(asrInterval);
+                    clearInterval(translationInterval);
+                }
+            }
+        }
+
+        function playEnglishOnly() {
+            if (outputWaveSurfer) {
+                // Stop input if it's playing
+                if (inputWaveSurfer && inputWaveSurfer.isPlaying()) {
+                    inputWaveSurfer.pause();
+                    clearInterval(asrInterval);
+                    clearInterval(translationInterval);
+                }
+                // Play or pause only the English output
+                outputWaveSurfer.playPause();
             }
         }
 
