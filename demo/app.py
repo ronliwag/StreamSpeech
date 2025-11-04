@@ -181,6 +181,7 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
         from agent.ctc_generator import CTCSequenceGenerator
         from agent.ctc_decoder import CTCDecoder
         from agent.tts.vocoder import CodeHiFiGANVocoderWithDur
+        from agent.tts.modified_hifigan_vocoder import ModifiedHiFiGANVocoder
 
         self.ctc_generator = CTCSequenceGenerator(
             tgt_dict, self.models, use_incremental_states=False
@@ -230,15 +231,36 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
 
         with open(args.vocoder_cfg) as f:
             vocoder_cfg = json.load(f)
-        self.vocoder = CodeHiFiGANVocoderWithDur(args.vocoder, vocoder_cfg)
+        
+        use_modified_hifigan = getattr(args, 'use_modified_hifigan', False)
+        
+        if use_modified_hifigan:
+            print("Using Modified HiFiGAN with FiLM conditioning")
+            self.vocoder = ModifiedHiFiGANVocoder(args.vocoder, vocoder_cfg)
+        else:
+            print("Using original CodeHiFiGAN vocoder")
+            self.vocoder = CodeHiFiGANVocoderWithDur(args.vocoder, vocoder_cfg)
+        
         if self.device == "cuda":
             self.vocoder = self.vocoder.cuda()
         self.dur_prediction = args.dur_prediction
+        self.use_modified_hifigan = use_modified_hifigan
 
         self.lagging_k1 = args.lagging_k1
         self.lagging_k2 = args.lagging_k2
         self.segment_size = args.segment_size
         self.stride_n = args.stride_n
+    
+    def set_film_conditioning(self, speaker_emb=None, emotion_emb=None):
+        """
+        Set FiLM conditioning for modified HiFiGAN vocoder.
+        
+        Args:
+            speaker_emb: Speaker embedding tensor [192]
+            emotion_emb: Emotion embedding tensor [768]
+        """
+        if self.use_modified_hifigan and hasattr(self.vocoder, 'set_film_conditioning'):
+            self.vocoder.set_film_conditioning(speaker=speaker_emb, emotion=emotion_emb)
 
         self.unit_per_subword = args.unit_per_subword
         self.stride_n2 = args.stride_n2
@@ -356,6 +378,11 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
             "--dur-prediction",
             action="store_true",
             help="enable duration prediction (for reduced/unique code sequences)",
+        )
+        parser.add_argument(
+            "--use-modified-hifigan",
+            action="store_true",
+            help="use modified HiFiGAN vocoder with FiLM conditioning",
         )
         parser.add_argument("--lagging-k1", type=int, default=0, help="lagging number")
         parser.add_argument("--lagging-k2", type=int, default=0, help="lagging number")
@@ -878,11 +905,19 @@ def run(source):
     agent.reset()
 
     interval=int(agent.segment_size*(ORG_SAMPLE_RATE/1000))
+    
+    # Pad audio to ensure it's divisible by interval to prevent tensor mismatch errors
+    # This ensures uniform chunk sizes for the attention mechanism
+    remainder = len(samples) % interval
+    if remainder != 0:
+        padding_length = interval - remainder
+        samples = np.pad(samples, (0, padding_length), mode='constant', constant_values=0)
+    
     cur_idx=0
     while not agent.states.target_finished:
         cur_idx+=interval
         agent.states.source=samples[:cur_idx]
-        agent.states.source_finished=cur_idx>len(samples)
+        agent.states.source_finished=cur_idx>=len(samples)
         action=agent.policy()
         # print("ASR_RESULT",ASR)
         # print("S2ST_RESULT",S2ST)
@@ -968,14 +1003,23 @@ with open('paths_config.json', 'r') as f:
 # Merge configurations
 args_dict = main_config.copy()
 if main_config.get('use_paths_config', False):
+    # Determine which vocoder to use
+    use_modified_hifigan = main_config.get('use_modified_hifigan', False)
+    
+    if use_modified_hifigan:
+        vocoder_paths = paths_config['modified_hifigan']
+    else:
+        vocoder_paths = paths_config['vocoder']
+    
     # Add paths from paths_config.json
     args_dict.update({
         'data-bin': paths_config['configs']['data_bin'],
         'user-dir': paths_config['configs']['user_dir'],
         'agent-dir': paths_config['configs']['agent_dir'],
         'model-path': paths_config['models']['simultaneous'],
-        'vocoder': paths_config['vocoder']['checkpoint'],
-        'vocoder-cfg': paths_config['vocoder']['config']
+        'vocoder': vocoder_paths['checkpoint'],
+        'vocoder-cfg': vocoder_paths['config'],
+        'use_modified_hifigan': use_modified_hifigan
     })
 
 # Initialize Flask app with config
@@ -996,11 +1040,13 @@ for key, value in args_dict.items():
     # Skip non-argument fields
     if key.startswith('_') or key in ['use_paths_config', 'language_pair']:
         continue
+    # Convert underscores to hyphens for argparse compatibility
+    arg_key = key.replace('_', '-')
     if isinstance(value, bool):
         if value:
-            args_list.append(f'--{key}')
+            args_list.append(f'--{arg_key}')
     else:
-        args_list.append(f'--{key}')
+        args_list.append(f'--{arg_key}')
         args_list.append(str(value))
 
 args = parser.parse_args(args_list)
@@ -1009,7 +1055,11 @@ agent = StreamSpeechS2STAgent(args)
 
 # Define Flask routes
 @app.route('/')
-def index():
+def landing():
+    return render_template('landing-page.html')
+
+@app.route('/demo')
+def demo():
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
@@ -1065,8 +1115,20 @@ def uploaded_file(filepath):
         print(f"File exists: {os.path.exists(path)}")
         
         reset()
-        run(path)
+        
+        # Set FiLM conditioning if embeddings are available
         filename = os.path.basename(path)
+        if filename in session_embeddings:
+            film_cond = session_embeddings[filename]
+            # Split into speaker and emotion components
+            speaker_emb = film_cond[:192]
+            emotion_emb = film_cond[192:]
+            agent.set_film_conditioning(speaker_emb=speaker_emb, emotion_emb=emotion_emb)
+            print(f"FiLM conditioning applied for: {filename}")
+        else:
+            print(f"No FiLM conditioning found for: {filename}")
+        
+        run(path)
         output_path = os.path.join(os.path.dirname(path), 'output.'+filename)
         
         # Normalize the audio data to prevent it from being too loud

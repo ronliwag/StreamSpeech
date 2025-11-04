@@ -1,0 +1,36 @@
+{
+    "_comment": "StreamSpeech Paths Configuration - Auto-generated",
+    "_note": "Use forward slashes (/) for paths, even on Windows",
+    
+    "streamspeech_root": "C:/Original Streamspeech - Copy",
+    "pretrain_models_root": "C:/Original Streamspeech - Copy/pretrain_models",
+    
+    "language_pair": "es-en",
+    
+    "models": {
+        "simultaneous": "C:/Original Streamspeech - Copy/pretrain_models/streamspeech.simultaneous.es-en.pt",
+        "offline": "C:/Original Streamspeech - Copy/pretrain_models/streamspeech.offline.es-en.pt"
+    },
+    
+    "vocoder": {
+        "checkpoint": "C:/Original Streamspeech - Copy/pretrain_models/unit-based_HiFi-GAN_vocoder/mHuBERT.layer11.km1000.en/g_00500000",
+        "config": "C:/Original Streamspeech - Copy/pretrain_models/unit-based_HiFi-GAN_vocoder/mHuBERT.layer11.km1000.en/config.json"
+    },
+    
+    "modified_hifigan": {
+        "checkpoint": "C:/Original Streamspeech - Copy/pretrain_models/modified_hifigan/2025-11-02/best_model.pt",
+        "config": "C:/Original Streamspeech - Copy/configs/base_hifigan_config.json"
+    },
+    
+    "configs": {
+        "data_bin": "C:/Original Streamspeech - Copy/configs/es-en",
+        "user_dir": "C:/Original Streamspeech - Copy/researches/ctc_unity",
+        "agent_dir": "C:/Original Streamspeech - Copy/agent"
+    },
+    
+    "demo": {
+        "upload_folder": "C:/Original Streamspeech - Copy/demo/uploads",
+        "host": "0.0.0.0",
+        "port": 7860
+    }
+}
