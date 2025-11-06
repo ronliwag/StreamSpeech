@@ -841,7 +841,22 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
     
 def run(source):
     # if len(S2ST)!=0: return
-    samples, sr = soundfile.read(source, dtype="float32")
+    
+    # Handle MP3 files by converting to WAV first
+    if source.lower().endswith('.mp3'):
+        print(f"Converting MP3 to WAV: {source}")
+        audio = AudioSegment.from_mp3(source)
+        # Create a temporary WAV file
+        wav_path = source.rsplit('.', 1)[0] + '_temp.wav'
+        audio.export(wav_path, format='wav')
+        samples, sr = soundfile.read(wav_path, dtype="float32")
+        # Clean up temp file
+        try:
+            os.remove(wav_path)
+        except:
+            pass
+    else:
+        samples, sr = soundfile.read(source, dtype="float32")
     
     # Resample to expected sample rate if needed
     if sr != ORG_SAMPLE_RATE:
@@ -1006,18 +1021,16 @@ def upload():
     if file:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
-        return filepath
+        # Return just the filename, not the full path
+        return file.filename
 
 @app.route('/process/<path:filepath>')
 def uploaded_file(filepath):
     latency = request.args.get('latency', default=320, type=int)
     agent.set_chunk_size(latency)
 
-    # Handle both full path and just filename
-    if filepath.startswith(app.config['UPLOAD_FOLDER']):
-        path = filepath
-    else:
-        path = os.path.join(app.config['UPLOAD_FOLDER'], filepath)
+    # Construct full path from upload folder and filename
+    path = os.path.join(app.config['UPLOAD_FOLDER'], filepath)
     # pdb.set_trace()
     # if len(S2ST)==0:
     reset()
@@ -1048,11 +1061,8 @@ def uploaded_file(filepath):
 
 @app.route('/output/<path:filepath>')
 def uploaded_output_file(filepath):
-    # Handle both full path and just filename
-    if filepath.startswith(app.config['UPLOAD_FOLDER']):
-        filename = os.path.basename(filepath)
-    else:
-        filename = filepath
+    # filepath is just the filename
+    filename = filepath
     
     return send_from_directory(app.config['UPLOAD_FOLDER'], 'output.'+filename)
 
