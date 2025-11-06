@@ -59,7 +59,14 @@
         button:hover:not([disabled]) {
             background-color: #45a049;
         }
-        #waveform, #outputWaveform {
+        #playModifiedButton {
+            background-color: #FF9800;
+            margin-left: 10px;
+        }
+        #playModifiedButton:hover:not([disabled]) {
+            background-color: #F57C00;
+        }
+        #waveform, #outputWaveform, #outputWaveformModified {
             margin: 10px 0; /* Reduced the margin */
             border: 1px solid #ddd;
             border-radius: 5px;
@@ -156,17 +163,10 @@
 <body>
     <div class="container">
         <div class="title-container">
-            <div class="tag-sticker"> ACL 2024 </div>
+            <div class="tag-sticker"> MODIFIED </div>
             <h1>StreamSpeech: Simultaneous Speech-to-Speech Translation with Multi-task Learning</h1>
         </div>
-        <p><strong>Authors</strong>: Shaolei Zhang, Qingkai Fang, Shoutao Guo, Zhengrui Ma, Min Zhang, Yang Feng*</p>
-        <h4>💡<strong>StreamSpeech</strong> is an <font color="red">"All in One" seamless model</font> for offline and simultaneous speech recognition, speech translation and speech synthesis under any latency.</h4>
-        <div class="badges">
-            <a href="https://arxiv.org/abs/2406.03049"><img src="https://img.shields.io/badge/arXiv-2406.03049-b31b1b.svg?logo=arXiv" alt="arXiv"></a>
-            <a href="https://ictnlp.github.io/StreamSpeech-site/"><img src="https://img.shields.io/badge/%F0%9F%8E%A7%20Demo-Listen%20to%20StreamSpeech-orange.svg" alt="Demo"></a>
-            <a href="https://huggingface.co/ICTNLP/StreamSpeech_Models/tree/main"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20-StreamSpeech_Models-blue.svg" alt="StreamSpeech Models"></a>
-            <a href="https://github.com/ictnlp/StreamSpeech"><img src="https://img.shields.io/github/stars/ictnlp/StreamSpeech?style=social&label=GitHub+Repo" alt="Visitors"></a>
-        </div>
+        <br>
         <form id="uploadForm">
             <div class="slider-container">
                 <label for="latencySlider">Latency (ms): </label>
@@ -179,9 +179,9 @@
         <div class="streaming-inputs">
             <h2>Streaming Inputs</h2>
             <div id="waveform"></div>
-            <button id="playButton" disabled>▶Play/Pause</button>
+            <button id="playButton" disabled>▶Play/Pause All</button>
+            <button id="playModifiedButton" disabled>▶Play Input + Modified Vocoder</button>
         </div>
-        <br><br>
         <div class="results">
             <h2 class="result-title">Streaming Speech Recognition<br></h2>
             <div id="asrResult" class="result-content"><br></div> <!-- Ensure empty line initially -->
@@ -191,15 +191,20 @@
             <div id="translationResult" class="result-content2"><br></div> <!-- Ensure empty line initially -->
         </div>
         <div class="results">
-            <h2 class="result-title">Simultaneous Speech-to-Speech Translation</h2>
+            <h2 class="result-title">Simultaneous Speech-to-Speech Translation (StreamSpeech)</h2>
             <div id="outputWaveform"></div>
+        </div>
+        <div class="results">
+            <h2 class="result-title">Simultaneous Speech-to-Speech Translation (Modified Vocoder)</h2>
+            <div id="outputWaveformModified"></div>
         </div>
     </div>
 
     <script>
-        var inputWaveSurfer, outputWaveSurfer;
+        var inputWaveSurfer, outputWaveSurfer, outputWaveSurferModified;
         var asrInterval, translationInterval;
         var playButton = document.getElementById('playButton');
+        var playModifiedButton = document.getElementById('playModifiedButton');
 
         // Listen for changes in the file input
         document.getElementById('fileInput').addEventListener('change', function() {
@@ -238,6 +243,9 @@
                 if (outputWaveSurfer) {
                     outputWaveSurfer.destroy();
                 }
+                if (outputWaveSurferModified) {
+                    outputWaveSurferModified.destroy();
+                }
 
                 inputWaveSurfer = WaveSurfer.create({
                     container: '#waveform',
@@ -264,16 +272,41 @@
 
                     outputWaveSurfer.load(`/output/${filename}`);
 
+                    // Create Modified Vocoder output WaveSurfer
+                    outputWaveSurferModified = WaveSurfer.create({
+                        container: '#outputWaveformModified',
+                        waveColor: '#f9f9f9', // Audio Result color
+                        progressColor: 'green', // Green progress color for Modified Vocoder
+                        // barWidth:1.0,
+                        splitChannels: true, // Split channels for left and right output
+                        channel: 'right', // Right channel
+                        normalize: true // Add normalize to output waveform
+                    });
+
+                    // Load Modified Vocoder output - you'll need to update this path when you have the backend endpoint
+                    outputWaveSurferModified.load(`/output_hifigan/${filename}`);
+
                     playButton.disabled = false;
                     playButton.style.backgroundColor = '#4CAF50'; // Change color to green
+                    
+                    playModifiedButton.disabled = false;
+                    playModifiedButton.style.backgroundColor = '#FF9800'; // Change color to orange
 
                     // Ensure old event listeners are removed before adding new ones
                     playButton.removeEventListener('click', playPauseHandler);
                     playButton.addEventListener('click', playPauseHandler);
+                    
+                    playModifiedButton.removeEventListener('click', playModifiedHandler);
+                    playModifiedButton.addEventListener('click', playModifiedHandler);
 
                     inputWaveSurfer.on('play', function() {
                         outputWaveSurfer.play();
                         outputWaveSurfer.seekTo(inputWaveSurfer.getCurrentTime() / inputWaveSurfer.getDuration());
+                        
+                        if (outputWaveSurferModified) {
+                            outputWaveSurferModified.play();
+                            outputWaveSurferModified.seekTo(inputWaveSurfer.getCurrentTime() / inputWaveSurfer.getDuration());
+                        }
 
                         updateASRResult(inputWaveSurfer.getCurrentTime());
                         updateTranslationResult(inputWaveSurfer.getCurrentTime());
@@ -289,6 +322,9 @@
 
                     inputWaveSurfer.on('pause', function() {
                         outputWaveSurfer.pause();
+                        if (outputWaveSurferModified) {
+                            outputWaveSurferModified.pause();
+                        }
                         clearInterval(asrInterval);
                         clearInterval(translationInterval);
                     });
@@ -296,6 +332,9 @@
                     inputWaveSurfer.on('seek', function() {
                         var seekTime = inputWaveSurfer.getCurrentTime() / inputWaveSurfer.getDuration();
                         outputWaveSurfer.seekTo(seekTime);
+                        if (outputWaveSurferModified) {
+                            outputWaveSurferModified.seekTo(seekTime);
+                        }
                     });
 
                     inputWaveSurfer.on('finish', function() {
@@ -305,6 +344,9 @@
                         // Continue playing output audio even after input finishes
                         if (outputWaveSurfer && !outputWaveSurfer.isPlaying()) {
                             outputWaveSurfer.play();
+                        }
+                        if (outputWaveSurferModified && !outputWaveSurferModified.isPlaying()) {
+                            outputWaveSurferModified.play();
                         }
                     });
                 });
@@ -319,6 +361,7 @@
             document.getElementById('asrResult').innerText = ''; // Clear ASR result and preserve empty line
             document.getElementById('translationResult').innerText = ''; // Clear translation result and preserve empty line
             document.getElementById('outputWaveform').innerHTML = ''; // Clear output waveform
+            document.getElementById('outputWaveformModified').innerHTML = ''; // Clear Modified Vocoder output waveform
             document.getElementById('waveform').innerHTML = ''; // Clear input waveform
             if (inputWaveSurfer) {
                 inputWaveSurfer.destroy();
@@ -327,6 +370,10 @@
             if (outputWaveSurfer) {
                 outputWaveSurfer.destroy();
                 outputWaveSurfer = null;
+            }
+            if (outputWaveSurferModified) {
+                outputWaveSurferModified.destroy();
+                outputWaveSurferModified = null;
             }
         }
 
@@ -343,6 +390,38 @@
                 } else {
                     outputWaveSurfer.playPause();
                 }
+            }
+            if (outputWaveSurferModified) {
+                // Handle Modified Vocoder waveform synchronization
+                if (inputWaveSurfer && inputWaveSurfer.isFinished() && outputWaveSurferModified.isPlaying()) {
+                    outputWaveSurferModified.pause();
+                } else if (inputWaveSurfer && inputWaveSurfer.isFinished() && !outputWaveSurferModified.isPlaying()) {
+                    outputWaveSurferModified.play();
+                } else {
+                    outputWaveSurferModified.playPause();
+                }
+            }
+        }
+
+        function playModifiedHandler() {
+            // Play only input and modified vocoder output
+            if (inputWaveSurfer) {
+                if (inputWaveSurfer.isPlaying()) {
+                    inputWaveSurfer.pause();
+                    if (outputWaveSurferModified) {
+                        outputWaveSurferModified.pause();
+                    }
+                } else {
+                    inputWaveSurfer.play();
+                    if (outputWaveSurferModified) {
+                        outputWaveSurferModified.seekTo(inputWaveSurfer.getCurrentTime() / inputWaveSurfer.getDuration());
+                        outputWaveSurferModified.play();
+                    }
+                }
+            }
+            // Ensure StreamSpeech output is paused
+            if (outputWaveSurfer && outputWaveSurfer.isPlaying()) {
+                outputWaveSurfer.pause();
             }
         }
 
