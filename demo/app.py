@@ -805,6 +805,18 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
                     finished=True,
                 )
 
+        # Extract discrete units before vocoder
+        if self.states.source_finished and len(unit) > 0:
+            try:
+                from extract_intermediates import save_discrete_units
+                # Use source filename if available, otherwise default to "output"
+                filename_prefix = getattr(self, 'current_source_filename', 'output')
+                save_discrete_units(unit, filename_prefix=f"{filename_prefix}_output")
+            except Exception as e:
+                import traceback
+                print(f"⚠️  Failed to save discrete units: {e}")
+                traceback.print_exc()
+        
         x = {
             "code": torch.tensor(unit, dtype=torch.long, device=self.device).view(
                 1, -1
@@ -857,6 +869,14 @@ def run(source):
             pass
     else:
         samples, sr = soundfile.read(source, dtype="float32")
+    
+    # Extract source audio at 16kHz
+    source_filename = os.path.basename(source).split('.')[0]
+    from extract_intermediates import save_source_audio
+    save_source_audio(samples, ORG_SAMPLE_RATE, filename_prefix=source_filename)
+    
+    # Store filename for later use in discrete units extraction
+    agent.current_source_filename = source_filename
     
     # Resample to expected sample rate if needed
     if sr != ORG_SAMPLE_RATE:
