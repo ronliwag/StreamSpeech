@@ -6,51 +6,47 @@
 ##########################################
 import sys
 import os
-# Add fairseq to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fairseq'))
+from pathlib import Path
 
-from flask import Flask, request, jsonify, render_template, send_from_directory,url_for
-import os
+# Ensure local libraries are importable by inserting project paths early.
+# Adds top-level 'fairseq' and 'SimulEval' directories plus the fairseq examples
+# directory used later for feature extraction utilities.
+ROOT = os.path.dirname(os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(ROOT, 'fairseq'))
+sys.path.insert(0, os.path.join(ROOT, 'SimulEval'))
+sys.path.insert(0, os.path.join(ROOT, 'fairseq', 'examples', 'speech_to_text'))
+
+from flask import Flask, request, jsonify, render_template, send_from_directory, url_for
 import json
 import logging
-
-# Re-enable Flask request logging (comment out to hide logs)
-# logging.getLogger('werkzeug').setLevel(logging.ERROR)
 import pdb
 import argparse
 from pydub import AudioSegment
 import math
 import numpy as np
 import shutil
+import traceback
 
+# Local / third-party imports (may require the environment from requirements.txt)
 from simuleval.utils import entrypoint
 from simuleval.data.segments import SpeechSegment
 from simuleval.agents import SpeechToSpeechAgent
 from simuleval.agents.actions import WriteAction, ReadAction
 from fairseq.checkpoint_utils import load_model_ensemble_and_task
 from fairseq.models.text_to_speech.hub_interface import TTSHubInterface
-from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from fairseq.data.audio.audio_utils import convert_waveform
-# Import data_utils directly from the file path
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fairseq', 'examples', 'speech_to_text'))
 from data_utils import extract_fbank_features
 import ast
-import math
-import os
-import json
-import numpy as np
 from copy import deepcopy
 import torch
 import torchaudio.compliance.kaldi as kaldi
+import torchaudio
 import yaml
-from fairseq import checkpoint_utils, tasks, utils, options
+from fairseq import checkpoint_utils, tasks, utils, options, search
 from fairseq.file_io import PathManager
-from fairseq import search
 from fairseq.data.audio.feature_transforms import CompositeAudioFeatureTransform
 import soundfile
-import argparse
 
 SHIFT_SIZE = 10
 WINDOW_SIZE = 25
@@ -262,6 +258,7 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
         self.output_asr_translation = args.output_asr_translation
 
         self.segment_size=args.segment_size
+        self.requested_latency_ms = args.segment_size
 
         if args.segment_size >= 640:
             self.whole_word = True
@@ -440,6 +437,7 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
     def set_chunk_size(self,segment_size):
         # print(segment_size)
         self.segment_size=segment_size
+        self.requested_latency_ms = segment_size
         chunk_size = segment_size // 40
 
 
@@ -868,8 +866,7 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
                 filename_prefix = getattr(self, 'current_source_filename', 'output')
                 save_discrete_units(unit, filename_prefix=f"{filename_prefix}_output")
             except Exception as e:
-                import traceback
-                print(f"⚠️  Failed to save discrete units: {e}")
+                print(f"[WARN] Failed to save discrete units: {e}")
                 traceback.print_exc()
         
         x = {
@@ -931,7 +928,9 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
 
         global OFFSET_MS
         if OFFSET_MS==-1:
-            OFFSET_MS=1000*len(self.states.source)/ORG_SAMPLE_RATE
+            computed_offset = 1000 * len(self.states.source) / ORG_SAMPLE_RATE
+            OFFSET_MS = max(self.requested_latency_ms, computed_offset)
+            print(f"[INFO] Initial output offset set to {OFFSET_MS:.2f} ms (computed {computed_offset:.2f} ms, requested {self.requested_latency_ms} ms)")
 
         # A SpeechSegment has to be returned for speech-to-speech translation system
         if self.states.source_finished and new_subword_tokens == -1:
@@ -947,24 +946,32 @@ class StreamSpeechS2STAgent(SpeechToSpeechAgent):
             finished=self.states.target_finished,
         )
     
-def run(source):
-    # if len(S2ST)!=0: return
-    
-    # Handle MP3 files by converting to WAV first
-    if source.lower().endswith('.mp3'):
-        print(f"Converting MP3 to WAV: {source}")
-        audio = AudioSegment.from_mp3(source)
-        # Create a temporary WAV file
-        wav_path = source.rsplit('.', 1)[0] + '_temp.wav'
-        audio.export(wav_path, format='wav')
-        samples, sr = soundfile.read(wav_path, dtype="float32")
-        # Clean up temp file
+def _load_audio_samples(source_path: str):
+    """
+    Load an audio file (wav/mp3/etc.) into a mono float32 numpy array.
+
+    Uses torchaudio as the primary backend with a soundfile fallback.
+    """
+    try:
+        waveform, sample_rate = torchaudio.load(source_path)
+        if waveform.dim() > 1 and waveform.size(0) > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        samples = waveform.squeeze(0).numpy().astype(np.float32)
+        return samples, sample_rate
+    except Exception as err:
+        print(f"[WARN] torchaudio failed to load {source_path}: {err}")
         try:
-            os.remove(wav_path)
-        except:
-            pass
-    else:
-        samples, sr = soundfile.read(source, dtype="float32")
+            samples, sample_rate = soundfile.read(source_path, dtype="float32")
+            if samples.ndim > 1:
+                samples = samples.mean(axis=1)
+            return samples.astype(np.float32), sample_rate
+        except Exception as sf_err:
+            print(f"[ERROR] Unable to load audio file {source_path}: {sf_err}")
+            raise
+
+
+def run(source):
+    samples, sr = _load_audio_samples(source)
     
     # Extract source audio at 16kHz
     source_filename = os.path.basename(source).split('.')[0]
@@ -997,7 +1004,7 @@ def run(source):
     agent.reset()
 
     interval=int(agent.segment_size*(ORG_SAMPLE_RATE/1000))
-    print(f"🔄 Processing with segment_size={agent.segment_size}ms, interval={interval} samples")
+    print(f"[INFO] Processing with segment_size={agent.segment_size}ms, interval={interval} samples")
     cur_idx=0
     while not agent.states.target_finished:
         cur_idx+=interval
@@ -1034,6 +1041,7 @@ def merge_audio(left_audio_path, right_audio_path, offset_ms):
     
     # Convert offset from ms to samples
     offset_samples = int(offset_ms * right_sr / 1000)
+    print(f"[INFO] Applying {offset_ms:.2f} ms ({offset_samples} samples at {right_sr} Hz) offset when aligning audio.")
     
     # Add silence at the beginning of right audio
     right_data = np.concatenate([np.zeros(offset_samples), right_data])
@@ -1093,24 +1101,54 @@ if main_config.get('use_paths_config', False):
     # Determine which vocoder to use
     vocoder_type = args_dict.get('vocoder-type', 'original')
     
+    modified_vocoder_cfg = paths_config.get('modified_vocoder')
+
     if vocoder_type == 'dual':
         # Provide both vocoder paths for dual mode
+        if modified_vocoder_cfg:
+            vocoder_paths = {
+                'original-vocoder': paths_config['vocoder']['checkpoint'],
+                'original-vocoder-cfg': paths_config['vocoder']['config'],
+                'modified-vocoder': modified_vocoder_cfg['checkpoint'],
+                'modified-vocoder-cfg': modified_vocoder_cfg['config'],
+                # Default to original for backward compatibility
+                'vocoder': paths_config['vocoder']['checkpoint'],
+                'vocoder-cfg': paths_config['vocoder']['config']
+            }
+        else:
+            print(
+                "Warning: 'modified_vocoder' section missing in paths_config.json. "
+                "Falling back to original vocoder paths for dual mode."
+            )
+            args_dict['vocoder-type'] = 'original'
+            vocoder_paths = {
+                'original-vocoder': paths_config['vocoder']['checkpoint'],
+                'original-vocoder-cfg': paths_config['vocoder']['config'],
+                'modified-vocoder': paths_config['vocoder']['checkpoint'],
+                'modified-vocoder-cfg': paths_config['vocoder']['config'],
+                'vocoder': paths_config['vocoder']['checkpoint'],
+                'vocoder-cfg': paths_config['vocoder']['config']
+            }
+    elif vocoder_type == 'modified':
+        if modified_vocoder_cfg:
+            vocoder_paths = {
+                'vocoder': modified_vocoder_cfg['checkpoint'],
+                'vocoder-cfg': modified_vocoder_cfg['config']
+            }
+        else:
+            print(
+                "Warning: 'modified_vocoder' section missing in paths_config.json. "
+                "Falling back to original vocoder paths."
+            )
+            args_dict['vocoder-type'] = 'original'
+            vocoder_paths = {
+                'vocoder': paths_config['vocoder']['checkpoint'],
+                'vocoder-cfg': paths_config['vocoder']['config']
+            }
+    else:
         vocoder_paths = {
             'original-vocoder': paths_config['vocoder']['checkpoint'],
             'original-vocoder-cfg': paths_config['vocoder']['config'],
-            'modified-vocoder': paths_config['modified_vocoder']['checkpoint'],
-            'modified-vocoder-cfg': paths_config['modified_vocoder']['config'],
-            # Default to original for backward compatibility
-            'vocoder': paths_config['vocoder']['checkpoint'],
-            'vocoder-cfg': paths_config['vocoder']['config']
-        }
-    elif vocoder_type == 'modified':
-        vocoder_paths = {
-            'vocoder': paths_config['modified_vocoder']['checkpoint'],
-            'vocoder-cfg': paths_config['modified_vocoder']['config']
-        }
-    else:
-        vocoder_paths = {
             'vocoder': paths_config['vocoder']['checkpoint'],
             'vocoder-cfg': paths_config['vocoder']['config']
         }
@@ -1174,16 +1212,21 @@ def upload():
 @app.route('/process/<path:filepath>')
 def uploaded_file(filepath):
     latency = request.args.get('latency', default=320, type=int)
-    print(f"📊 Received latency parameter: {latency} ms")
+    print(f"[INFO] Received latency parameter: {latency} ms")
     agent.set_chunk_size(latency)
-    print(f"✅ Agent segment_size updated to: {agent.segment_size} ms")
+    print(f"[INFO] Agent segment_size updated to: {agent.segment_size} ms")
 
     # Construct full path from upload folder and filename
     path = os.path.join(app.config['UPLOAD_FOLDER'], filepath)
     # pdb.set_trace()
     # if len(S2ST)==0:
-    reset()
-    run(path)
+    try:
+        reset()
+        run(path)
+    except Exception as exc:
+        message = f"Processing failed for {filepath}: {exc}"
+        app.logger.exception(message)
+        return message, 500
     filename = os.path.basename(path)
     output_path = os.path.join(os.path.dirname(path), 'output.'+filename)
     
@@ -1197,6 +1240,10 @@ def uploaded_file(filepath):
         max_val_original = np.max(np.abs(audio_data_original))
         if max_val_original > 0:
             audio_data_original = audio_data_original / max_val_original * 0.8
+        if agent.requested_latency_ms and agent.requested_latency_ms > 0:
+            delay_samples = int(agent.requested_latency_ms * SAMPLE_RATE / 1000)
+            print(f"[INFO] Prepending {agent.requested_latency_ms} ms ({delay_samples} samples) of silence to dual-mode original output.")
+            audio_data_original = np.concatenate([np.zeros(delay_samples, dtype=np.float32), audio_data_original])
         soundfile.write(output_path_original, audio_data_original, SAMPLE_RATE)
         
         # Save modified vocoder output
@@ -1205,12 +1252,16 @@ def uploaded_file(filepath):
         max_val_modified = np.max(np.abs(audio_data_modified))
         if max_val_modified > 0:
             audio_data_modified = audio_data_modified / max_val_modified * 0.8
+        if agent.requested_latency_ms and agent.requested_latency_ms > 0:
+            delay_samples = int(agent.requested_latency_ms * SAMPLE_RATE / 1000)
+            print(f"[INFO] Prepending {agent.requested_latency_ms} ms ({delay_samples} samples) of silence to dual-mode modified output.")
+            audio_data_modified = np.concatenate([np.zeros(delay_samples, dtype=np.float32), audio_data_modified])
         soundfile.write(output_path_modified, audio_data_modified, SAMPLE_RATE)
         
         # Also save as default output (use original)
         soundfile.write(output_path, audio_data_original, SAMPLE_RATE)
         
-        print(f"✓ DUAL MODE: Saved both outputs")
+        print("DUAL MODE: Saved both outputs.")
         print(f"  - Original: {output_path_original}")
         print(f"  - Modified: {output_path_modified}")
     else:
@@ -1223,6 +1274,10 @@ def uploaded_file(filepath):
             max_val = np.max(np.abs(audio_data))
             if max_val > 0:
                 audio_data = audio_data / max_val * 0.8  # Scale to 80% of max to be safe
+            if agent.requested_latency_ms and agent.requested_latency_ms > 0:
+                delay_samples = int(agent.requested_latency_ms * SAMPLE_RATE / 1000)
+                print(f"[INFO] Prepending {agent.requested_latency_ms} ms ({delay_samples} samples) of silence to single-mode output.")
+                audio_data = np.concatenate([np.zeros(delay_samples, dtype=np.float32), audio_data])
             soundfile.write(output_path, audio_data, SAMPLE_RATE)
         else:
             # Create silent audio if no data
@@ -1248,15 +1303,21 @@ def uploaded_output_file(filepath):
 def uploaded_output_original_file(filepath):
     # filepath is just the filename
     filename = filepath
-    
-    return send_from_directory(app.config['UPLOAD_FOLDER'], 'output_original.'+filename)
+    cache_bust = request.args.get('t')
+    response = send_from_directory(app.config['UPLOAD_FOLDER'], 'output_original.'+filename)
+    if cache_bust:
+        response.headers['Cache-Control'] = 'no-store'
+    return response
 
 @app.route('/output_modified/<path:filepath>')
 def uploaded_output_modified_file(filepath):
     # filepath is just the filename
     filename = filepath
-    
-    return send_from_directory(app.config['UPLOAD_FOLDER'], 'output_modified.'+filename)
+    cache_bust = request.args.get('t')
+    response = send_from_directory(app.config['UPLOAD_FOLDER'], 'output_modified.'+filename)
+    if cache_bust:
+        response.headers['Cache-Control'] = 'no-store'
+    return response
 
 @app.route('/is_dual_mode', methods=['GET'])
 def is_dual_mode():

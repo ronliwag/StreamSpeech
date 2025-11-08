@@ -249,16 +249,18 @@
             audioContext = new (window.AudioContext || window.webkitAudioContext)({
                 sampleRate: 16000  // CRITICAL: Match the server's SAMPLE_RATE
             });
-            console.log('✓ AudioContext created at ' + audioContext.sampleRate + ' Hz');
+            console.log('AudioContext created at ' + audioContext.sampleRate + ' Hz');
         } catch (e) {
             console.error('Failed to create AudioContext with 16kHz:', e);
             // Fallback to default context (may cause speed issues)
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            console.warn('⚠ Using default AudioContext at ' + audioContext.sampleRate + ' Hz - audio may be sped up');
+            console.warn('Using default AudioContext at ' + audioContext.sampleRate + ' Hz - audio may be sped up');
         }
         
         var inputWaveSurfer, outputWaveSurfer, outputWaveSurferModified;
         var asrInterval, translationInterval;
+        var currentFilename = null;
+        var currentLatency = 320;
         var playSourceButton = document.getElementById('playSourceButton');
         var playOriginalButton = document.getElementById('playOriginalButton');
         var playModifiedButton = document.getElementById('playModifiedButton');
@@ -282,14 +284,19 @@
 
         document.getElementById('uploadForm').addEventListener('submit', function(event) {
             event.preventDefault();
-            var formData = new FormData();
             var fileInput = document.getElementById('fileInput');
+            if (!fileInput.files.length) {
+                return;
+            }
+
+            var formData = new FormData();
             var file = fileInput.files[0];
             formData.append('file', file);
 
-            // Get the latency value
-            var latency = document.getElementById('latencySlider').value;
-            console.log('📊 Latency value selected:', latency, 'ms');
+            var latencySlider = document.getElementById('latencySlider');
+            var latency = parseInt(latencySlider.value, 10);
+            currentLatency = latency;
+            console.log('Latency value selected:', latency, 'ms');
 
             fetch('/upload', {
                 method: 'POST',
@@ -298,189 +305,199 @@
             .then(response => response.text())
             .then(filepath => {
                 var filename = filepath.split('/').pop();
-                refreshResults(); // Refresh results area
+                currentFilename = filename;
+                startProcessing(currentFilename, latency);
+            })
+            .catch(error => console.error('Error:', error));
+        });
 
-                if (inputWaveSurfer) {
-                    inputWaveSurfer.destroy();
-                }
-                if (outputWaveSurfer) {
-                    outputWaveSurfer.destroy();
-                }
-                if (outputWaveSurferModified) {
-                    outputWaveSurferModified.destroy();
-                }
+        document.getElementById('latencySlider').addEventListener('change', function() {
+            var newLatency = parseInt(this.value, 10);
+            updateLatencyLabel(this);
+            currentLatency = newLatency;
+            if (currentFilename) {
+                console.log('Latency slider changed:', newLatency, 'ms - reprocessing current file');
+                startProcessing(currentFilename, newLatency);
+            }
+        });
 
-                inputWaveSurfer = WaveSurfer.create({
-                    container: '#waveform',
-                    waveColor: '#ffffff',
-                    progressColor: 'blue',
-                    normalize: true,
-                    progressClass: 'wave-progress',
-                    interact: false,  // Disable seeking by clicking
-                    loop: false,      // Disable looping
-                    audioContext: audioContext  // Use 16kHz context
-                });
+        function startProcessing(filename, latency) {
+            if (!filename) {
+                return;
+            }
 
-                inputWaveSurfer.on('ready', function() {
-                    // Check if dual mode is enabled
-                    fetch('/is_dual_mode')
-                        .then(response => response.json())
-                        .then(data => {
-                            const isDualMode = data.dual_mode;
-                            
-                            // Create original output WaveSurfer
-                            outputWaveSurfer = WaveSurfer.create({
-                                container: '#outputWaveform',
+            currentFilename = filename;
+            currentLatency = parseInt(latency, 10) || currentLatency || 320;
+
+            refreshResults();
+
+            var slider = document.getElementById('latencySlider');
+            if (slider && slider.value !== String(currentLatency)) {
+                slider.value = currentLatency;
+                updateLatencyLabel(slider);
+            }
+
+            inputWaveSurfer = WaveSurfer.create({
+                container: '#waveform',
+                waveColor: '#ffffff',
+                progressColor: 'blue',
+                normalize: true,
+                progressClass: 'wave-progress',
+                interact: false,
+                loop: false,
+                audioContext: audioContext
+            });
+
+            inputWaveSurfer.on('ready', function() {
+                fetch('/is_dual_mode')
+                    .then(response => response.json())
+                    .then(data => {
+                        const isDualMode = data.dual_mode;
+
+                        const originalSectionTitle = document.querySelector('.results:nth-of-type(3) .result-title');
+                        const cacheTag = Date.now();
+
+                        outputWaveSurfer = WaveSurfer.create({
+                            container: '#outputWaveform',
+                            waveColor: '#f9f9f9',
+                            progressColor: 'orange',
+                            normalize: true,
+                            loop: false,
+                            audioContext: audioContext
+                        });
+
+                        if (isDualMode) {
+                            if (originalSectionTitle) {
+                                originalSectionTitle.innerText = 'Simultaneous Speech-to-Speech Translation (Original Vocoder)';
+                            }
+
+                            outputWaveSurfer.load(`/output_original/${filename}?t=${cacheTag}`);
+
+                            outputWaveSurferModified = WaveSurfer.create({
+                                container: '#outputWaveformModified',
                                 waveColor: '#f9f9f9',
-                                progressColor: 'orange',
+                                progressColor: 'purple',
                                 normalize: true,
-                                loop: false,  // Disable looping
-                                audioContext: audioContext  // Use 16kHz context
+                                loop: false,
+                                audioContext: audioContext
                             });
 
-                            if (isDualMode) {
-                                // DUAL MODE: Load both outputs
-                                console.log("Dual mode detected - loading both vocoders");
-                                
-                                // Update title for original output
-                                document.querySelector('.results:nth-of-type(3) .result-title').innerText = 
-                                    'Simultaneous Speech-to-Speech Translation (Original Vocoder)';
-                                
-                                // Load original vocoder output
-                                outputWaveSurfer.load(`/output_original/${filename}`);
-                                
-                                // Create Modified Vocoder output WaveSurfer
-                                outputWaveSurferModified = WaveSurfer.create({
-                                    container: '#outputWaveformModified',
-                                    waveColor: '#f9f9f9',
-                                    progressColor: 'purple',
-                                    normalize: true,
-                                    loop: false,  // Disable looping
-                                    audioContext: audioContext  // Use 16kHz context
-                                });
-                                
-                                // Load modified vocoder output
-                                outputWaveSurferModified.load(`/output_modified/${filename}`);
-                                
-                                playModifiedButton.disabled = false;
-                                playModifiedButton.style.backgroundColor = '#800080';
-                            } else {
-                                // SINGLE MODE: Load only one output
-                                console.log("Single mode - loading default vocoder");
-                                
-                                // Load default output
-                                outputWaveSurfer.load(`/output/${filename}`);
-                                
-                                playModifiedButton.disabled = true;
-                                playModifiedButton.style.backgroundColor = '#ddd';
-                            }
+                            outputWaveSurferModified.load(`/output_modified/${filename}?t=${cacheTag}`);
 
-                            playSourceButton.disabled = false;
-                            playSourceButton.style.backgroundColor = 'blue';
-                            
-                            playOriginalButton.disabled = false;
-                            playOriginalButton.style.backgroundColor = '#ffa500';
-                            
-                            playSourceOriginalButton.disabled = false;
-                            playSourceOriginalButton.style.backgroundColor = '#ffa500';
+                            playModifiedButton.disabled = false;
+                            playModifiedButton.style.backgroundColor = '#800080';
 
-                            // Ensure old event listeners are removed before adding new ones
-                            playSourceButton.removeEventListener('click', playSourceHandler);
-                            playSourceButton.addEventListener('click', playSourceHandler);
-                            
-                            playOriginalButton.removeEventListener('click', playOriginalHandler);
-                            playOriginalButton.addEventListener('click', playOriginalHandler);
-                            
-                            playSourceOriginalButton.removeEventListener('click', playSourceOriginalHandler);
-                            playSourceOriginalButton.addEventListener('click', playSourceOriginalHandler);
-                            
-                            if (isDualMode) {
-                                playModifiedButton.removeEventListener('click', playModifiedHandler);
-                                playModifiedButton.addEventListener('click', playModifiedHandler);
-                                
-                                playBothButton.disabled = false;
-                                playBothButton.style.backgroundColor = '#70b027';
-                                playBothButton.removeEventListener('click', playBothHandler);
-                                playBothButton.addEventListener('click', playBothHandler);
-                                
-                                playSourceModifiedButton.disabled = false;
-                                playSourceModifiedButton.style.backgroundColor = '#800080';
-                                playSourceModifiedButton.removeEventListener('click', playSourceModifiedHandler);
-                                playSourceModifiedButton.addEventListener('click', playSourceModifiedHandler);
+                            playBothButton.disabled = false;
+                            playBothButton.style.backgroundColor = '#70b027';
+                            playSourceModifiedButton.disabled = false;
+                            playSourceModifiedButton.style.backgroundColor = '#800080';
+
+                            playModifiedButton.removeEventListener('click', playModifiedHandler);
+                            playModifiedButton.addEventListener('click', playModifiedHandler);
+                            playBothButton.removeEventListener('click', playBothHandler);
+                            playBothButton.addEventListener('click', playBothHandler);
+                            playSourceModifiedButton.removeEventListener('click', playSourceModifiedHandler);
+                            playSourceModifiedButton.addEventListener('click', playSourceModifiedHandler);
+                        } else {
+                            if (originalSectionTitle) {
+                                originalSectionTitle.innerText = 'Output: Original Vocoder (Standard English)';
                             }
-                            
-                            // Add finish and pause event handlers INSIDE the async callback
-                            // This ensures WaveSurfer instances are fully created
-                            outputWaveSurfer.on('finish', function() {
-                                console.log("Original output finished");
-                                // Reset ALL button states that might be using this audio
-                                playOriginalButton.innerHTML = '▶ Play Original Vocoder';
+                            outputWaveSurfer.load(`/output/${filename}?t=${cacheTag}`);
+
+                            playModifiedButton.disabled = true;
+                            playModifiedButton.style.backgroundColor = '#ddd';
+                            playBothButton.disabled = true;
+                            playBothButton.style.backgroundColor = '#ddd';
+                            playSourceModifiedButton.disabled = true;
+                            playSourceModifiedButton.style.backgroundColor = '#ddd';
+
+                            playModifiedButton.removeEventListener('click', playModifiedHandler);
+                            playBothButton.removeEventListener('click', playBothHandler);
+                            playSourceModifiedButton.removeEventListener('click', playSourceModifiedHandler);
+
+                            outputWaveSurferModified = null;
+                        }
+
+                        playSourceButton.disabled = false;
+                        playSourceButton.style.backgroundColor = 'blue';
+                        playOriginalButton.disabled = false;
+                        playOriginalButton.style.backgroundColor = '#ffa500';
+                        playSourceOriginalButton.disabled = false;
+                        playSourceOriginalButton.style.backgroundColor = '#ffa500';
+
+                        playSourceButton.removeEventListener('click', playSourceHandler);
+                        playSourceButton.addEventListener('click', playSourceHandler);
+
+                        playOriginalButton.removeEventListener('click', playOriginalHandler);
+                        playOriginalButton.addEventListener('click', playOriginalHandler);
+
+                        playSourceOriginalButton.removeEventListener('click', playSourceOriginalHandler);
+                        playSourceOriginalButton.addEventListener('click', playSourceOriginalHandler);
+
+                        outputWaveSurfer.on('finish', function() {
+                            console.log("Original output finished");
+                            playOriginalButton.innerHTML = '▶ Play Original Vocoder';
+                            playBothButton.innerHTML = '▶ Play Both Outputs';
+                            playSourceOriginalButton.innerHTML = '▶ Play Source + Original';
+                            clearInterval(asrInterval);
+                            clearInterval(translationInterval);
+                            asrInterval = null;
+                            translationInterval = null;
+                        });
+
+                        outputWaveSurfer.on('pause', function() {
+                            console.log("Original output paused");
+                            clearInterval(asrInterval);
+                            clearInterval(translationInterval);
+                            asrInterval = null;
+                            translationInterval = null;
+                        });
+
+                        if (isDualMode && outputWaveSurferModified) {
+                            outputWaveSurferModified.on('finish', function() {
+                                console.log("Modified output finished");
+                                playModifiedButton.innerHTML = '▶ Play Modified Vocoder';
                                 playBothButton.innerHTML = '▶ Play Both Outputs';
-                                playSourceOriginalButton.innerHTML = '▶ Play Source + Original';
-                                clearInterval(asrInterval);
-                                clearInterval(translationInterval);
-                                asrInterval = null;
-                                translationInterval = null;
-                            });
-                            
-                            outputWaveSurfer.on('pause', function() {
-                                console.log("Original output paused");
-                                clearInterval(asrInterval);
-                                clearInterval(translationInterval);
-                                asrInterval = null;
-                                translationInterval = null;
-                            });
-                            
-                            if (isDualMode && outputWaveSurferModified) {
-                                outputWaveSurferModified.on('finish', function() {
-                                    console.log("Modified output finished");
-                                    // Reset ALL button states that might be using this audio
-                                    playModifiedButton.innerHTML = '▶ Play Modified Vocoder';
-                                    playBothButton.innerHTML = '▶ Play Both Outputs';
-                                    playSourceModifiedButton.innerHTML = '▶ Play Source + Modified';
-                                    clearInterval(asrInterval);
-                                    clearInterval(translationInterval);
-                                    asrInterval = null;
-                                    translationInterval = null;
-                                });
-                                
-                                outputWaveSurferModified.on('pause', function() {
-                                    console.log("Modified output paused");
-                                    clearInterval(asrInterval);
-                                    clearInterval(translationInterval);
-                                    asrInterval = null;
-                                    translationInterval = null;
-                                });
-                            }
-                            
-                            inputWaveSurfer.on('pause', function() {
-                                console.log("Input paused");
-                                clearInterval(asrInterval);
-                                clearInterval(translationInterval);
-                                asrInterval = null;
-                                translationInterval = null;
-                            });
-                            
-                            inputWaveSurfer.on('finish', function() {
-                                console.log("Input finished");
-                                // Reset ALL button states that might be using this audio
-                                playSourceButton.innerHTML = '▶ Play Source';
-                                playSourceOriginalButton.innerHTML = '▶ Play Source + Original';
                                 playSourceModifiedButton.innerHTML = '▶ Play Source + Modified';
                                 clearInterval(asrInterval);
                                 clearInterval(translationInterval);
                                 asrInterval = null;
                                 translationInterval = null;
                             });
-                        });
-                });
 
-                // Pass the latency parameter to the server
-                console.log('🌐 Requesting processing with URL:', `/process/${filename}?latency=${latency}`);
-                inputWaveSurfer.load(`/process/${filename}?latency=${latency}`);
-            })
-            .catch(error => console.error('Error:', error));
-        });
+                            outputWaveSurferModified.on('pause', function() {
+                                console.log("Modified output paused");
+                                clearInterval(asrInterval);
+                                clearInterval(translationInterval);
+                                asrInterval = null;
+                                translationInterval = null;
+                            });
+                        }
+
+                        inputWaveSurfer.on('pause', function() {
+                            console.log("Input paused");
+                            clearInterval(asrInterval);
+                            clearInterval(translationInterval);
+                            asrInterval = null;
+                            translationInterval = null;
+                        });
+
+                        inputWaveSurfer.on('finish', function() {
+                            console.log("Input finished");
+                            playSourceButton.innerHTML = '▶ Play Source';
+                            playSourceOriginalButton.innerHTML = '▶ Play Source + Original';
+                            playSourceModifiedButton.innerHTML = '▶ Play Source + Modified';
+                            clearInterval(asrInterval);
+                            clearInterval(translationInterval);
+                            asrInterval = null;
+                            translationInterval = null;
+                        });
+                    });
+            });
+
+            console.log('[INFO] Requesting processing with URL:', `/process/${filename}?latency=${currentLatency}`);
+            inputWaveSurfer.load(`/process/${filename}?latency=${currentLatency}&t=${Date.now()}`);
+        }
 
         function refreshResults() {
             document.getElementById('asrResult').innerText = ''; // Clear ASR result and preserve empty line
@@ -500,6 +517,25 @@
                 outputWaveSurferModified.destroy();
                 outputWaveSurferModified = null;
             }
+
+            var controlDefaults = [
+                { button: playSourceButton, label: '▶ Play Source' },
+                { button: playOriginalButton, label: '▶ Play Original Vocoder' },
+                { button: playModifiedButton, label: '▶ Play Modified Vocoder' },
+                { button: playBothButton, label: '▶ Play Both Outputs' },
+                { button: playSourceOriginalButton, label: '▶ Play Source + Original' },
+                { button: playSourceModifiedButton, label: '▶ Play Source + Modified' }
+            ];
+
+            controlDefaults.forEach(function(entry) {
+                if (entry.button) {
+                    entry.button.disabled = true;
+                    entry.button.style.backgroundColor = '#ddd';
+                    if (entry.label) {
+                        entry.button.innerHTML = entry.label;
+                    }
+                }
+            });
         }
 
         function playSourceHandler() {
